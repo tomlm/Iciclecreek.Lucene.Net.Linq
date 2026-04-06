@@ -1,5 +1,4 @@
-﻿using System;
-using System.Reflection;
+using System;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Search;
@@ -38,15 +37,15 @@ namespace Lucene.Net.Linq.Util
 
             if (lowerBound is int)
             {
-                return NumericRangeQuery.NewIntRange(fieldName, (int)lowerBound, (int)upperBound, minInclusive, maxInclusive);
+                return NumericRangeQuery.NewInt32Range(fieldName, (int)lowerBound, (int)upperBound, minInclusive, maxInclusive);
             }
             if (lowerBound is long)
             {
-                return NumericRangeQuery.NewLongRange(fieldName, (long)lowerBound, (long)upperBound, minInclusive, maxInclusive);
+                return NumericRangeQuery.NewInt64Range(fieldName, (long)lowerBound, (long)upperBound, minInclusive, maxInclusive);
             }
             if (lowerBound is float)
             {
-                return NumericRangeQuery.NewFloatRange(fieldName, (float)lowerBound, (float)upperBound, minInclusive, maxInclusive);
+                return NumericRangeQuery.NewSingleRange(fieldName, (float)lowerBound, (float)upperBound, minInclusive, maxInclusive);
             }
             if (lowerBound is double)
             {
@@ -63,7 +62,6 @@ namespace Lucene.Net.Linq.Util
         [Obsolete]
         internal static ValueType ToNumericFieldValue(this ValueType value)
         {
-            // TODO: replace with converters
             if (value is DateTime)
             {
                 return ((DateTime)value).ToUniversalTime().Ticks;
@@ -78,103 +76,49 @@ namespace Lucene.Net.Linq.Util
 
         internal static string ToPrefixCoded(this ValueType value)
         {
-            if (value is int)
+            if (value is int i)
             {
-                return NumericUtils.IntToPrefixCoded((int)value);
+                var br = new BytesRef();
+                NumericUtils.Int32ToPrefixCoded(i, 0, br);
+                return br.Utf8ToString();
             }
-            if (value is long)
+            if (value is long l)
             {
-                return NumericUtils.LongToPrefixCoded((long)value);
+                var br = new BytesRef();
+                NumericUtils.Int64ToPrefixCoded(l, 0, br);
+                return br.Utf8ToString();
             }
-            if (value is double)
+            if (value is double d)
             {
-                return NumericUtils.DoubleToPrefixCoded((double)value);
+                var br = new BytesRef();
+                NumericUtils.Int64ToPrefixCoded(NumericUtils.DoubleToSortableInt64(d), 0, br);
+                return br.Utf8ToString();
             }
-            if (value is float)
+            if (value is float f)
             {
-                return NumericUtils.FloatToPrefixCoded((float)value);
+                var br = new BytesRef();
+                NumericUtils.Int32ToPrefixCoded(NumericUtils.SingleToSortableInt32(f), 0, br);
+                return br.Utf8ToString();
             }
 
             throw new NotSupportedException("ValueType " + value.GetType() + " not supported.");
-        }
-
-        internal static NumericField SetValue(this NumericField field, ValueType value)
-        {
-            if (value.GetType().IsEnum)
-            {
-                value = (ValueType) Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()));
-            }
-
-            if (value is int)
-            {
-                return field.SetIntValue((int) value);
-            }
-            if (value is long)
-            {
-                return field.SetLongValue((long)value);
-            }
-            if (value is double)
-            {
-                return field.SetDoubleValue((double)value);
-            }
-            if (value is float)
-            {
-                return field.SetFloatValue((float)value);
-            }
-
-            throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as NumericField.", "value");
-        }
-
-        /// <summary>
-        /// See https://issues.apache.org/jira/browse/LUCENENET-519.
-        /// <see cref="NumericField"/> uses <see cref="Field.Index.ANALYZED_NO_NORMS"/> and does
-        /// not allow alternative indexing methods to be used. This prevents boost from being applied
-        /// when a document is being indexed.
-        /// </summary>
-        internal static NumericField ForceDisableOmitNorms(this NumericField field)
-        {
-            const string fieldName = "internalOmitNorms";
-            var fieldInfo = typeof(AbstractField).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-
-            if (fieldInfo == null)
-            {
-                throw new InvalidOperationException(string.Format("Type {0} does not have a non-public field named {1}.", typeof(AbstractField), fieldName));
-            }
-
-            fieldInfo.SetValue(field, false);
-
-            return field;
         }
     }
 
     internal static class TypeExtensions
     {
-        internal static int ToSortField(this Type valueType)
+        internal static SortFieldType ToSortFieldType(this Type valueType)
         {
-            if (valueType == typeof(long))
-            {
-                return SortField.LONG;
-            }
-            if (valueType == typeof(int))
-            {
-                return SortField.INT;
-            }
-            if (valueType == typeof(double))
-            {
-                return SortField.DOUBLE;
-            }
-            if (valueType == typeof(float))
-            {
-                return SortField.FLOAT;
-            }
-
-            return SortField.CUSTOM;
+            if (valueType == typeof(long))   return SortFieldType.INT64;
+            if (valueType == typeof(int))    return SortFieldType.INT32;
+            if (valueType == typeof(double)) return SortFieldType.DOUBLE;
+            if (valueType == typeof(float))  return SortFieldType.SINGLE;
+            return SortFieldType.STRING;
         }
 
         internal static Type GetUnderlyingType(this Type type)
         {
             return Nullable.GetUnderlyingType(type) ?? type;
         }
-
     }
 }

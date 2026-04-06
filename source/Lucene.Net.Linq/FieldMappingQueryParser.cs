@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.Search;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 using Version = Lucene.Net.Util.Version;
 
@@ -22,6 +22,7 @@ namespace Lucene.Net.Linq
             this.initialDefaultField = DefaultField;
             this.matchVersion = matchVersion;
             this.mapper = mapper;
+            this.DefaultSearchProperty = DefaultField;
         }
 
         public FieldMappingQueryParser(Version matchVersion, string defaultSearchField, IDocumentMapper<T> mapper)
@@ -33,30 +34,16 @@ namespace Lucene.Net.Linq
             this.mapper = mapper;
         }
 
-        /// <summary>
-        /// Sets the default property for queries that don't specify which field to search.
-        /// For an example query like <c>Lucene OR NuGet</c>, if this property is set to <c>SearchText</c>,
-        /// it will produce a query like <c>SearchText:Lucene OR SearchText:NuGet</c>.
-        /// </summary>
         [Obsolete("Set the default search field in the constructor instead")]
         public string DefaultSearchProperty { get; set; }
 
-        public Version MatchVersion
-        {
-            get { return matchVersion; }
-        }
+        public Version MatchVersion => matchVersion;
 
-        public IDocumentMapper<T> DocumentMapper
-        {
-            get { return mapper; }
-        }
+        public IDocumentMapper<T> DocumentMapper => mapper;
 
-        public override string Field
-        {
-            get { return DefaultSearchProperty; }
-        }
+        public override string Field => DefaultSearchProperty;
 
-        protected override Query GetFieldQuery(string field, string queryText)
+        protected override Query GetFieldQuery(string field, string queryText, bool quoted)
         {
             var mapping = GetMapping(field);
 
@@ -71,13 +58,14 @@ namespace Lucene.Net.Linq
             }
         }
 
-        protected override Query GetRangeQuery(string field, string part1, string part2, bool inclusive)
+        protected override Query GetRangeQuery(string field, string part1, string part2, bool startInclusive, bool endInclusive)
         {
-            var rangeType = inclusive ? RangeType.Inclusive : RangeType.Exclusive;
+            var lowerRangeType = startInclusive ? RangeType.Inclusive : RangeType.Exclusive;
+            var upperRangeType = endInclusive ? RangeType.Inclusive : RangeType.Exclusive;
             var mapping = GetMapping(field);
             try
             {
-                return mapping.CreateRangeQuery(part1, part2, rangeType, rangeType);
+                return mapping.CreateRangeQuery(part1, part2, lowerRangeType, upperRangeType);
             }
             catch (Exception ex)
             {
@@ -111,7 +99,6 @@ namespace Lucene.Net.Linq
             {
                 field = DefaultSearchProperty;
             }
-
             return field;
         }
 

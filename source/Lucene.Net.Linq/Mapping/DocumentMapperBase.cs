@@ -3,9 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Analysis;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 using Version = Lucene.Net.Util.Version;
 
@@ -135,16 +136,16 @@ namespace Lucene.Net.Linq.Mapping
 
         public virtual void PrepareSearchSettings(IQueryExecutionContext context)
         {
-            if (EnableScoreTracking)
-            {
-                context.Searcher.SetDefaultFieldSortScoring(true, false);
-            }
+            // In Lucene 4.8 IndexSearcher.SetDefaultFieldSortScoring is gone;
+            // score tracking on a Sort happens via the Search overload that
+            // takes doDocScores: true. LuceneQueryExecutorBase passes
+            // doDocScores when EnableScoreTracking is true (see executor).
         }
 
         public Query CreateMultiFieldQuery(string pattern)
         {
             // TODO: pattern should be analyzed/converted on per-field basis.
-            var parser = new MultiFieldQueryParser(version, fieldMap.Keys.ToArray(), externalAnalyzer);
+            var parser = new MultiFieldQueryParser(version, fieldMap.Keys.ToArray(), externalAnalyzer ?? (Analyzer)analyzer);
             return parser.Parse(pattern);
         }
 

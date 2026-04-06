@@ -43,8 +43,12 @@ namespace Lucene.Net.Linq.Clauses.Expressions
 
         public float Boost
         {
-            get { return field.Boost; }
-            set { field.Boost = value; }
+            // NB: @field escapes the C# 13 contextual `field` keyword which
+            // would otherwise resolve to the auto-property backing field of
+            // this very `Boost` accessor (a float) instead of the
+            // LuceneQueryFieldExpression instance member named `field`.
+            get { return @field.FieldBoost; }
+            set { @field.FieldBoost = value; }
         }
 
         public float? Fuzzy

@@ -1,18 +1,9 @@
-﻿using System.Linq;
-using System.Reflection;
-
+// Stage 4 cleanup: this file used to provide GetCustomAttribute<T>/
+// GetCustomAttributes<T> extension methods on MemberInfo. Those are now
+// shipped by the BCL in System.Reflection.CustomAttributeExtensions, so
+// the local helpers caused ambiguous-overload errors. Kept as an empty
+// placeholder to avoid removing the file from the project; existing
+// callers transparently use the BCL versions.
 namespace Lucene.Net.Linq.Util
 {
-    public static class MemberInfoUtils
-    {
-        public static T GetCustomAttribute<T>(this MemberInfo member, bool inherit)
-        {
-            return member.GetCustomAttributes<T>(inherit).SingleOrDefault();
-        }
-
-        public static T[] GetCustomAttributes<T>(this MemberInfo member, bool inherit)
-        {
-            return member.GetCustomAttributes(typeof (T), inherit).Cast<T>().ToArray();
-        }
-    }
 }

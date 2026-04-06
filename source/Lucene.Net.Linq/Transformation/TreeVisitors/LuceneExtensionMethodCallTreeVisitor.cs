@@ -7,8 +7,8 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
 {
     internal class LuceneExtensionMethodCallTreeVisitor : MethodInfoMatchingTreeVisitor
     {
-        private static readonly MethodInfo AnyFieldMethod = ReflectionUtility.GetMethod(() => LuceneMethods.AnyField<object>(null));
-        private static readonly MethodInfo ScoreMethod = ReflectionUtility.GetMethod(() => LuceneMethods.Score<object>(null));
+        private static readonly MethodInfo AnyFieldMethod = global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.AnyField<object>(null));
+        private static readonly MethodInfo ScoreMethod = global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.Score<object>(null));
 
         public LuceneExtensionMethodCallTreeVisitor()
         {

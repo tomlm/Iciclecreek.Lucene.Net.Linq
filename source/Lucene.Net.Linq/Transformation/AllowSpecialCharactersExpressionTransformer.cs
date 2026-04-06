@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Transformation
     {
         public Expression Transform(MethodCallExpression expression)
         {
-            if (expression.Method.Name != ReflectionUtility.GetMethod(() => LuceneMethods.AllowSpecialCharacters<object>(null)).Name)
+            if (expression.Method.Name != global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.AllowSpecialCharacters<object>(null)).Name)
             {
                 return expression;
             }

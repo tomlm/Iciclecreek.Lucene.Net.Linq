@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
     internal class BoostMethodCallTreeVisitor : MethodInfoMatchingTreeVisitor
     {
         private readonly int stage;
-        private static readonly MethodInfo BoostMethod = ReflectionUtility.GetMethod(() => LuceneMethods.Boost<object>(null, 0f));
+        private static readonly MethodInfo BoostMethod = global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.Boost<object>(null, 0f));
 
         internal BoostMethodCallTreeVisitor(int stage)
         {
@@ -38,7 +38,7 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
                 return expression;
             }
 
-            queryField.Boost = (float)((ConstantExpression)expression.Arguments[1]).Value;
+            queryField.FieldBoost = (float)((ConstantExpression)expression.Arguments[1]).Value;
 
             return queryField;
         }

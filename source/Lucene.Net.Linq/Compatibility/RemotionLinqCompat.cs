@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
 using Remotion.Linq.Clauses.Expressions;
 using Remotion.Linq.Parsing;
 
@@ -57,7 +58,7 @@ namespace Remotion.Linq.Parsing
         }
 
         protected virtual Expression VisitExtensionExpression(ExtensionExpression expression)
-            => expression.VisitChildren(this);
+            => base.VisitExtension(expression);
 
         // -------- Renamed BCL ExpressionVisitor methods --------
         protected sealed override Expression VisitBinary(BinaryExpression node) => VisitBinaryExpression(node);
@@ -109,6 +110,25 @@ namespace Remotion.Linq.Parsing
             => VisitSubQueryExpression(expression);
         protected virtual Expression VisitSubQueryExpression(SubQueryExpression expression)
             => base.VisitSubQuery(expression);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Remotion.Linq.Utilities.ReflectionUtility  (re-linq 1.x helper, removed in 2.x)
+// ---------------------------------------------------------------------------
+namespace Remotion.Linq.Utilities
+{
+    internal static class ReflectionUtility
+    {
+        public static MethodInfo GetMethod<T>(Expression<Func<T>> wrappedCall)
+        {
+            return ((MethodCallExpression)wrappedCall.Body).Method;
+        }
+
+        public static MethodInfo GetMethod(Expression<Action> wrappedCall)
+        {
+            return ((MethodCallExpression)wrappedCall.Body).Method;
+        }
     }
 }
 

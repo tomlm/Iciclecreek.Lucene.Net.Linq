@@ -1,3 +1,4 @@
+using Lucene.Net.Linq.Clauses.ExpressionNodes;
 using Lucene.Net.Linq.Transformation;
 using Remotion.Linq.Parsing.ExpressionVisitors.Transformation;
 using Remotion.Linq.Parsing.Structure;
@@ -19,8 +20,15 @@ namespace Lucene.Net.Linq
 
         private static CompoundNodeTypeProvider CreateNodeTypeProvider()
         {
-            var registry = MethodInfoBasedNodeTypeRegistry.CreateFromTypes(typeof (RelinqQueryParserFactory).Assembly.GetTypes());
-            
+            // Manually register Lucene.Net.Linq's custom expression nodes.
+            // re-linq 2.x removed the assembly-scanning convenience overload
+            // (MethodInfoBasedNodeTypeRegistry.CreateFromTypes), so we declare
+            // the mapping here. Add to this list when introducing new nodes.
+            var registry = new MethodInfoBasedNodeTypeRegistry();
+            registry.Register(BoostExpressionNode.SupportedMethods, typeof(BoostExpressionNode));
+            registry.Register(QueryStatisticsCallbackExpressionNode.SupportedMethods, typeof(QueryStatisticsCallbackExpressionNode));
+            registry.Register(TrackRetrievedDocumentsExpressionNode.SupportedMethods, typeof(TrackRetrievedDocumentsExpressionNode));
+
             var nodeTypeProvider = ExpressionTreeParser.CreateDefaultNodeTypeProvider();
             nodeTypeProvider.InnerProviders.Add(registry);
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Abstractions;
@@ -12,6 +13,7 @@ using Lucene.Net.Search;
 using Microsoft.Extensions.Logging;
 using Lucene.Net.Store;
 using Remotion.Linq.Parsing.Structure;
+using LuceneVersion = Lucene.Net.Util.LuceneVersion;
 using Version = Lucene.Net.Util.Version;
 
 namespace Lucene.Net.Linq
@@ -428,15 +430,25 @@ namespace Lucene.Net.Linq
 
         protected virtual IIndexWriter GetIndexWriter(Analyzer analyzer)
         {
-            var indexWriter = new IndexWriter(directory, analyzer, ShouldCreateIndex, DeletionPolicy, MaxFieldLength)
+            var config = new IndexWriterConfig(global::Lucene.Net.Util.LuceneVersion.LUCENE_48, analyzer)
             {
-                MergeFactor = Settings.MergeFactor
+                OpenMode = ShouldCreateIndex ? OpenMode.CREATE : OpenMode.APPEND,
+                IndexDeletionPolicy = DeletionPolicy,
+                RAMBufferSizeMB = Settings.RAMBufferSizeMB,
             };
-            indexWriter.SetRAMBufferSizeMB(Settings.RAMBufferSizeMB);
+
+            // The MergePolicyBuilder callback was originally given an IndexWriter
+            // to inspect, but in Lucene 4.8 the merge policy must be configured
+            // via IndexWriterConfig before the writer is constructed. Since the
+            // legacy callback signature can't be honoured, we evaluate it with
+            // a null writer and only use its result; consumers that depended on
+            // inspecting the writer state must migrate to a different approach.
             if (Settings.MergePolicyBuilder != null)
             {
-                indexWriter.SetMergePolicy(Settings.MergePolicyBuilder(indexWriter));
+                config.MergePolicy = Settings.MergePolicyBuilder(null);
             }
+
+            var indexWriter = new IndexWriter(directory, config);
             return new IndexWriterAdapter(indexWriter);
         }
 
@@ -448,8 +460,9 @@ namespace Lucene.Net.Linq
                 {
                     return !directory.ListAll().Any();
                 }
-                catch (NoSuchDirectoryException)
+                catch (global::Lucene.Net.Index.IndexNotFoundException)
                 {
+                    // Lucene 4.8 replaced NoSuchDirectoryException with this.
                     return true;
                 }
             }
@@ -458,11 +471,6 @@ namespace Lucene.Net.Linq
         protected virtual IndexDeletionPolicy DeletionPolicy
         {
             get { return Settings.DeletionPolicy; }
-        }
-
-        protected virtual IndexWriter.MaxFieldLength MaxFieldLength
-        {
-            get { return Settings.MaxFieldLength; }
         }
 
         private LuceneQueryable<T> CreateQueryable<T>(ObjectLookup<T> factory, Context context, IDocumentMapper<T> mapper)

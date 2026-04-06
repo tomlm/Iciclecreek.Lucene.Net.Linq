@@ -1,9 +1,15 @@
-﻿using Lucene.Net.Index;
-using Lucene.Net.Search;
+// TODO Lucene 4.8 port: the converter-based custom sort path used the
+// Lucene 3.x FieldComparator<T> + FieldCache_Fields.GetStrings APIs,
+// neither of which exist in Lucene.Net 4.8 in the same shape. The classes
+// in this folder are kept as compile-time placeholders so the rest of the
+// library can build; they are not currently wired up. ReflectionFieldMapper
+// .CreateSortField falls back to a string SortField when a converter is
+// configured (see the comment there). Re-enable converter sort by porting
+// to FieldComparer<T> + FieldCache.GetTerms in a future stage.
 
 namespace Lucene.Net.Linq.Search
 {
-    public abstract class FieldComparator<T> : FieldComparator
+    public abstract class FieldComparator<T>
     {
         protected string field;
         protected T[] values;
@@ -15,22 +21,5 @@ namespace Lucene.Net.Linq.Search
             this.field = field;
             this.values = new T[numHits];
         }
-
-        public override void Copy(int slot, int doc)
-        {
-            values[slot] = currentReaderValues[doc];
-        }
-
-        public override void SetBottom(int bottom)
-        {
-            this.bottom = values[bottom];
-        }
-
-        public override void SetNextReader(IndexReader reader, int docBase)
-        {
-            currentReaderValues = GetCurrentReaderValues(reader, docBase);
-        }
-
-        protected abstract T[] GetCurrentReaderValues(IndexReader reader, int docBase);
     }
 }

@@ -131,7 +131,7 @@ namespace Lucene.Net.Linq
 
         protected virtual IndexSearcher CreateSearcher()
         {
-            return new IndexSearcher(IndexReader.Open(directory, readOnly: true));
+            return new IndexSearcher(DirectoryReader.Open(directory));
         }
 
         /// <summary>
@@ -142,13 +142,14 @@ namespace Lucene.Net.Linq
         protected virtual bool ReopenSearcher(out IndexSearcher searcher)
         {
             searcher = null;
-            var oldReader = reader;
-            reader = reader.Reopen();
-            if (ReferenceEquals(reader, oldReader))
+            var oldReader = (DirectoryReader)reader;
+            var newReader = DirectoryReader.OpenIfChanged(oldReader);
+            if (newReader == null)
             {
                 return false;
             }
-            searcher = new IndexSearcher(reader);
+            reader = newReader;
+            searcher = new IndexSearcher(newReader);
             return true;
         }
 
@@ -253,10 +254,10 @@ namespace Lucene.Net.Linq
                             undisposedTrackers.Remove(this);
                         }
 
-                        var reader = searcher.IndexReader;
-                        searcher.Dispose();
-                        // NB IndexSearcher.Dispose() does not Dispose externally provided IndexReader:
-                        reader.Dispose();
+                        // In Lucene 4.8 IndexSearcher itself is no longer
+                        // IDisposable; the underlying IndexReader holds the
+                        // resources and is what we close.
+                        searcher.IndexReader.Dispose();
 
                         disposed = true;
                     }

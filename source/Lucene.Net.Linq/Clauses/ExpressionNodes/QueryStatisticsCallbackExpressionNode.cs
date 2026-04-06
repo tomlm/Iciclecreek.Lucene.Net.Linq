@@ -10,7 +10,7 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
     {
         public static readonly MethodInfo[] SupportedMethods =
         {
-            GetSupportedMethod (() => LuceneMethods.CaptureStatistics<object>(null, null))
+            global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.CaptureStatistics<object>(null, null))
         };
 
         private readonly ConstantExpression callback;

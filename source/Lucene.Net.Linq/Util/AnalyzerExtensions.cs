@@ -1,8 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Lucene.Net.Analysis;
-using Lucene.Net.Analysis.Tokenattributes;
+using Lucene.Net.Analysis.TokenAttributes;
 
 namespace Lucene.Net.Linq.Util
 {
@@ -10,35 +9,33 @@ namespace Lucene.Net.Linq.Util
     {
         internal static string Analyze(this Analyzer analyzer, string fieldName, string pattern)
         {
-            return analyzer.GetTerms(fieldName, pattern).Single();
+            using (var enumerator = analyzer.GetTerms(fieldName, pattern).GetEnumerator())
+            {
+                if (!enumerator.MoveNext())
+                {
+                    return string.Empty;
+                }
+                return enumerator.Current;
+            }
         }
 
         internal static IEnumerable<string> GetTerms(this Analyzer analyzer, string fieldName, string pattern)
         {
-            TokenStream s;
-
+            var stream = analyzer.GetTokenStream(fieldName, new StringReader(pattern));
             try
             {
-                s = analyzer.ReusableTokenStream(fieldName, new StringReader(pattern));
-            }
-            catch (IOException)
-            {
-                s = analyzer.TokenStream(fieldName, new StringReader(pattern));
-            }
-
-            try
-            {
-                while (s.IncrementToken())
+                stream.Reset();
+                while (stream.IncrementToken())
                 {
-                    if (!s.HasAttribute<ITermAttribute>()) continue;
-
-                    var attr = s.GetAttribute<ITermAttribute>();
-                    yield return attr.Term;
+                    var attr = stream.GetAttribute<ICharTermAttribute>();
+                    if (attr == null) continue;
+                    yield return attr.ToString();
                 }
+                stream.End();
             }
             finally
             {
-                s.Dispose();
+                stream.Dispose();
             }
         }
     }

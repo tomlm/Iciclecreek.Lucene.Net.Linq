@@ -1,13 +1,11 @@
-﻿using Lucene.Net.Documents;
-
 namespace Lucene.Net.Linq.Mapping
 {
-    /// <see cref="Field.Store"/>
+    /// <summary>
+    /// Whether a field's value is stored in the index for later retrieval.
+    /// </summary>
     public enum StoreMode
     {
-        /// <see cref="Field.Store.YES"/>
-        Yes = Field.Store.YES,
-        /// <see cref="Field.Store.NO"/>
-        No = Field.Store.NO
+        Yes = 0,
+        No = 1,
     }
 }

@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
     {
         public static readonly MethodInfo[] SupportedMethods =
             {
-                GetSupportedMethod (() => LuceneMethods.TrackRetrievedDocuments<object>(null, null))
+                global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.TrackRetrievedDocuments<object>(null, null))
             };
 
         private readonly ConstantExpression tracker;

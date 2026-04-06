@@ -1,19 +1,15 @@
-﻿using Lucene.Net.Documents;
-
 namespace Lucene.Net.Linq.Mapping
 {
-    /// <see cref="Field.Index"/>
+    /// <summary>
+    /// Controls how a field is indexed. Maps onto Lucene 4.8's
+    /// <c>IndexOptions</c> + tokenization + omitNorms triple.
+    /// </summary>
     public enum IndexMode
     {
-        /// <see cref="Field.Index.NO"/>
-        NotIndexed = Field.Index.NO,
-        /// <see cref="Field.Index.ANALYZED"/>
-        Analyzed = Field.Index.ANALYZED,
-        /// <see cref="Field.Index.ANALYZED_NO_NORMS"/>
-        AnalyzedNoNorms = Field.Index.ANALYZED_NO_NORMS,
-        /// <see cref="Field.Index.NOT_ANALYZED"/>
-        NotAnalyzed = Field.Index.NOT_ANALYZED,
-        /// <see cref="Field.Index.NOT_ANALYZED_NO_NORMS"/>
-        NotAnalyzedNoNorms = Field.Index.NOT_ANALYZED_NO_NORMS,
+        NotIndexed = 0,
+        Analyzed = 1,
+        AnalyzedNoNorms = 2,
+        NotAnalyzed = 3,
+        NotAnalyzedNoNorms = 4,
     }
 }

@@ -2,10 +2,11 @@
 using System.ComponentModel;
 using System.Reflection;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 
 namespace Lucene.Net.Linq.Fluent
 {
@@ -26,7 +27,7 @@ namespace Lucene.Net.Linq.Fluent
         protected StoreMode store = StoreMode.Yes;
         protected float boost = 1.0f;
         protected bool caseSensitive;
-        protected QueryParser.Operator defaultParseOperator = QueryParser.OR_OPERATOR;
+        protected Operator defaultParseOperator = Operator.OR;
         protected bool nativeSort;
 
         internal PropertyMap(ClassMap<T> classMap, PropertyInfo propInfo, bool isKey = false)
@@ -194,7 +195,7 @@ namespace Lucene.Net.Linq.Fluent
         /// </summary>
         public PropertyMap<T> ParseWithAndOperatorByDefault()
         {
-            defaultParseOperator = QueryParser.Operator.AND;
+            defaultParseOperator = Operator.AND;
             return this;
         }
 
@@ -206,7 +207,7 @@ namespace Lucene.Net.Linq.Fluent
         /// </summary>
         public PropertyMap<T> ParseWithOrOperatorByDefault()
         {
-            defaultParseOperator = QueryParser.Operator.OR;
+            defaultParseOperator = Operator.OR;
             return this;
         }
 

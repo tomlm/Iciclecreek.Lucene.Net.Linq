@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
 {
     internal class FuzzyMethodCallTreeVisitor : MethodInfoMatchingTreeVisitor
     {
-        private static readonly MethodInfo FuzzyMethod = ReflectionUtility.GetMethod(() => LuceneMethods.Fuzzy(false, 0f));
+        private static readonly MethodInfo FuzzyMethod = global::Remotion.Linq.Utilities.ReflectionUtility.GetMethod(() => LuceneMethods.Fuzzy(false, 0f));
 
         internal FuzzyMethodCallTreeVisitor()
         {

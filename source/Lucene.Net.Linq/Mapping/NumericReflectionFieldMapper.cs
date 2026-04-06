@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
-using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Search;
@@ -40,16 +40,34 @@ namespace Lucene.Net.Linq.Mapping
                 targetType = GetUnderlyingValueType();
             }
 
-            return new SortField(FieldName, targetType.ToSortField(), reverse);
+            return new SortField(FieldName, targetType.ToSortFieldType(), reverse);
         }
 
-        protected internal override object ConvertFieldValue(IFieldable field)
+        protected internal override object ConvertFieldValue(IIndexableField field)
         {
-            var value = base.ConvertFieldValue(field);
+            var value = (object)null;
+
+            // Numeric typed fields expose strongly-typed accessors; fall back
+            // to the string representation if the field was indexed via the
+            // legacy code path.
+            if (field.NumericType != NumericFieldType.NONE)
+            {
+                value = field.GetNumericValue();
+            }
+            else
+            {
+                value = field.GetStringValue();
+            }
 
             if (typeToValueTypeConverter != null)
             {
                 value = typeToValueTypeConverter.ConvertFrom(value);
+            }
+            else if (value is string s)
+            {
+                // restore the boxed primitive
+                var propType = propertyInfo.PropertyType.GetUnderlyingType();
+                value = Convert.ChangeType(s, propType);
             }
 
             return value;
@@ -65,23 +83,31 @@ namespace Lucene.Net.Linq.Mapping
 
             value = ConvertToSupportedValueType(value);
 
-            var numericField = new NumericField(fieldName, precisionStep, FieldStore, true);
-            numericField.SetValue((ValueType)value);
+            var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
+            Field numericField;
 
-            SetBoostIfNotDefault(numericField);
+            switch (value)
+            {
+                case int i:
+                    numericField = new Int32Field(fieldName, i, fieldStore);
+                    break;
+                case long l:
+                    numericField = new Int64Field(fieldName, l, fieldStore);
+                    break;
+                case float f:
+                    numericField = new SingleField(fieldName, f, fieldStore);
+                    break;
+                case double d:
+                    numericField = new DoubleField(fieldName, d, fieldStore);
+                    break;
+                default:
+                    throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as a numeric field.", nameof(source));
+            }
 
+            // In Lucene 4.8 boost on numeric fields is no longer supported
+            // (norms are required for boost, and numeric fields don't index
+            // norms). Boost is silently dropped if not the default.
             target.Add(numericField);
-        }
-
-        private void SetBoostIfNotDefault(NumericField numericField)
-        {
-            const float threshold = 0.002f;
-            var diff = Math.Abs(Boost - 1.0f);
-            
-            if (diff < threshold) return;
-
-            numericField.ForceDisableOmitNorms();
-            numericField.Boost = Boost;
         }
 
         public override string ConvertToQueryExpression(object value)
@@ -103,7 +129,7 @@ namespace Lucene.Net.Linq.Mapping
             {
                 return base.CreateQuery(pattern);
             }
-            
+
             return new TermQuery(new Term(FieldName, pattern));
         }
 
