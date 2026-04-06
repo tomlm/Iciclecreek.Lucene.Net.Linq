@@ -1,6 +1,5 @@
 using System.Linq.Expressions;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -14,9 +13,9 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             this.pattern = pattern;
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newPattern = visitor.VisitExpression(pattern);
+            var newPattern = visitor.Visit(pattern);
 
             if (Equals(pattern, newPattern)) return this;
 

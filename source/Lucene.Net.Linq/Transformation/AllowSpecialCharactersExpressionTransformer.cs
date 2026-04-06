@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Remotion.Linq;
-using Remotion.Linq.Parsing.ExpressionTreeVisitors.Transformation;
+using Remotion.Linq.Parsing.ExpressionVisitors.Transformation;
 
 namespace Lucene.Net.Linq.Transformation
 {

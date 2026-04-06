@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Search;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -61,11 +60,11 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             get { return occur; }
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newField = (LuceneQueryFieldExpression)visitor.VisitExpression(field);
-            var newLower = visitor.VisitExpression(lower);
-            var newUpper = visitor.VisitExpression(upper);
+            var newField = (LuceneQueryFieldExpression)visitor.Visit(field);
+            var newLower = visitor.Visit(lower);
+            var newUpper = visitor.Visit(upper);
 
             return (newField == field && newLower == lower && newUpper == upper) ? this :
                 new LuceneRangeQueryExpression(newField, newLower, lowerQueryType, newUpper, upperQueryType, occur);

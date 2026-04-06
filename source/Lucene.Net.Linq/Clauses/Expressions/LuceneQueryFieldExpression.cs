@@ -1,7 +1,6 @@
 using System;
 using System.Linq.Expressions;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -22,7 +21,7 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             this.fieldName = fieldName;
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
             // no children.
             return this;

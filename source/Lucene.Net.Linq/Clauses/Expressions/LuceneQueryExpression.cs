@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using Lucene.Net.Search;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -15,7 +14,7 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             this.query = query;
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
             // no children.
             return this;

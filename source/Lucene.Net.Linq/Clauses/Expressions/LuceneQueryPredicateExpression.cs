@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Search;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -61,10 +60,10 @@ namespace Lucene.Net.Linq.Clauses.Expressions
 
         public bool AllowSpecialCharacters { get; set; }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newField = (LuceneQueryFieldExpression)visitor.VisitExpression(QueryField);
-            var newPattern = visitor.VisitExpression(QueryPattern);
+            var newField = (LuceneQueryFieldExpression)visitor.Visit(QueryField);
+            var newPattern = visitor.Visit(QueryPattern);
 
             return (newPattern == QueryPattern && newField == QueryField) ? this : new LuceneQueryPredicateExpression(newField, newPattern, Occur) { AllowSpecialCharacters = AllowSpecialCharacters };
         }

@@ -19,7 +19,7 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
             }
         }
 
-        protected override void FlattenSubQuery(SubQueryExpression subQueryExpression, FromClauseBase fromClause, QueryModel queryModel,
+        protected override void FlattenSubQuery(SubQueryExpression subQueryExpression, IFromClause fromClause, QueryModel queryModel,
             int destinationIndex)
         {
             var subQueryModel = subQueryExpression.QueryModel;

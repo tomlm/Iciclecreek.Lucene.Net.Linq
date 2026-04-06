@@ -1,6 +1,5 @@
 using System.Linq.Expressions;
 using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
@@ -31,9 +30,9 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             return string.Format("{0}^{1}", BinaryExpression, Boost);
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newExpression = visitor.VisitExpression(BinaryExpression);
+            var newExpression = visitor.Visit(BinaryExpression);
 
             if (ReferenceEquals(BinaryExpression, newExpression)) return this;
 

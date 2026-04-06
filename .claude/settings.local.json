@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f source/Lucene.Net.Linq/packages.config source/Lucene.Net.Linq/Lucene.Net.Linq.nuspec source/Lucene.Net.Linq/readme.txt source/Lucene.Net.Linq/Properties/AssemblyInfo.cs source/Lucene.Net.Linq.Tests/packages.config source/Lucene.Net.Linq.Tests/App.config source/Lucene.Net.Linq.Tests/Properties/AssemblyInfo.cs)",
+      "Bash(rmdir source/Lucene.Net.Linq/Properties source/Lucene.Net.Linq.Tests/Properties)",
+      "Bash(rm -rf source/Lucene.Net.Linq/bin source/Lucene.Net.Linq/obj source/Lucene.Net.Linq.Tests/bin source/Lucene.Net.Linq.Tests/obj)",
+      "Bash(dotnet restore:*)"
+    ]
+  }
+}
