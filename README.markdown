@@ -4,6 +4,48 @@
 
 Lucene.Net.Linq is a .net library that enables LINQ queries to run natively on a Lucene.Net index.
 
+### 4.0.0-alpha1 — Lucene.Net 4.8 / .NET 8 port
+
+This branch ports the library from the original `Lucene.Net 3.0.3` /
+`net40` baseline onto `Lucene.Net 4.8.0-beta00017` and SDK-style projects
+multi-targeting `netstandard2.0;net8.0`. Highlights:
+
+- **Lucene.Net 4.8.0-beta00017** for the index, query, analysis, and
+  query-parser packages.
+- **Remotion.Linq 2.2.0** for the LINQ provider plumbing.
+- **Microsoft.Extensions.Logging.Abstractions** replaces `Common.Logging`.
+  Wire your logger via `Lucene.Net.Linq.Util.Logging.LoggerFactory =
+  myFactory;` (defaults to `NullLoggerFactory`).
+- **Tests** moved from RhinoMocks/NUnit 2 to **NSubstitute / NUnit 4**.
+
+#### Behaviour caveats
+
+A handful of subsystems were stubbed during the Lucene 3 → 4.8 sweep
+because the underlying Lucene API was removed or substantially reworked.
+Each is marked with a `TODO Lucene 4.8 port` comment in source and the
+corresponding test is `[Ignore]`'d:
+
+- **Document-level boost** was removed in Lucene 4.8 (only field-level
+  boost remains). `[DocumentBoost]` properties are silently ignored at
+  index time. The read path returns `1.0f`.
+- **Numeric-field boost** is dropped — Lucene 4.8 numeric fields don't
+  index norms, so per-field boost on `Int32Field`/`Int64Field`/etc. has
+  no effect.
+- **Converter-based custom sort** (the `FieldComparator<T>` +
+  `FieldCache_Fields.GetStrings` path) is disabled. Properties with a
+  `TypeConverter` that need sorting fall back to a string `SortField`;
+  mark them with `NativeSort=true` to opt in.
+- **Term-vector retrieval** via `TermFreqVectorDocumentMapper<T>` is a
+  stub. The Lucene 3 `ITermFreqVector` type is gone; the replacement
+  is `IndexReader.GetTermVector` returning `Terms`.
+- **`MergePolicyBuilder`** callback in `LuceneDataProviderSettings` now
+  receives `null` instead of an `IndexWriter`. Lucene 4.8 requires the
+  merge policy to be set on `IndexWriterConfig` *before* the writer is
+  constructed; consumers that inspected the writer state must migrate.
+
+If you depend on any of these and want them re-implemented properly,
+search the source for `TODO Lucene 4.8 port` for the entry points.
+
 * Automatically converts PONOs to Documents and back
 * Add, delete and update documents in atomic transaction
 * Unit of Work pattern automatically tracks and flushes updated documents

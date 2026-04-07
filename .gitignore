@@ -3,6 +3,12 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Local NuGet restore cache (legacy packages.config layout, not used by SDK projects)
+packages/
+
+# Claude Code per-repo settings
+.claude/
+
 # User-specific files
 *.rsuser
 *.suo

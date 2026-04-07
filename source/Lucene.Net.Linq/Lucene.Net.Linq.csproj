@@ -5,14 +5,19 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- 1591: missing XML doc on public type/member.
+         1574: <cref> in doc comments to types removed in Lucene.Net 4.8 (Field, NumericField,
+               QueryParser members like LowercaseExpandedTerms, etc.). The doc comments are
+               preserved as English text but the cref links no longer resolve.
+         0419: ambiguous <cref> overload references. -->
+    <NoWarn>$(NoWarn);1591;1574;0419</NoWarn>
     <RootNamespace>Lucene.Net.Linq</RootNamespace>
     <AssemblyName>Lucene.Net.Linq</AssemblyName>
 
     <!-- Package metadata (moved from .nuspec) -->
     <IsPackable>true</IsPackable>
     <PackageId>Lucene.Net.Linq</PackageId>
-    <Version>4.0.0-alpha</Version>
+    <Version>4.0.0-alpha1</Version>
     <Title>Lucene.Net.Linq</Title>
     <Authors>Chris Eldredge</Authors>
     <Owners>The Motley Fool, LLC</Owners>
