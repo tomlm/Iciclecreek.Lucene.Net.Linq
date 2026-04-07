@@ -22,7 +22,7 @@ namespace Lucene.Net.Linq
     /// have public default constructors.
     /// </summary>
     /// <typeparam name="T">The type of object <see cref="Document"/>s will be mapped onto.</typeparam>
-    /// <returns>An instance of <paramref name="T"/></returns>
+    /// <returns>An instance of <typeparamref name="T"/></returns>
     public delegate T ObjectFactory<out T>();
 
     /// <summary>
@@ -31,7 +31,7 @@ namespace Lucene.Net.Linq
     /// </summary>
     /// <typeparam name="T">The type of object <see cref="Document"/>s will be mapped onto.</typeparam>
     /// <param name="key">A key that uniquely identifies the <see cref="Document"/>.</param>
-    /// <returns>An instance of <paramref name="T"/></returns>
+    /// <returns>An instance of <typeparamref name="T"/></returns>
     public delegate T ObjectLookup<out T>(IDocumentKey key);
 
     /// <summary>
@@ -124,25 +124,26 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// Create a <see cref="QueryParsers.QueryParser"/> suitable for parsing advanced queries
+        /// Create a <see cref="Lucene.Net.QueryParsers.Classic.QueryParser"/> suitable for parsing advanced queries
         /// that cannot not expressed as LINQ (e.g. queries submitted by a user).
         ///
-        /// After the instance is returned, options such as <see cref="QueryParsers.QueryParser.AllowLeadingWildcard"/>
-        /// and <see cref="QueryParsers.QueryParser.Field"/> can be customized to the clients needs.
+        /// After the instance is returned, options such as <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.AllowLeadingWildcard"/>
+        /// and <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.Field"/> can be customized to the clients needs.
         /// </summary>
         /// <typeparam name="T">The type of document that queries will be built against.</typeparam>
         public FieldMappingQueryParser<T> CreateQueryParser<T>()
         {
             var mapper = new ReflectionDocumentMapper<T>(version, externalAnalyzer);
-            return new FieldMappingQueryParser<T>(version, mapper) { DefaultSearchProperty = mapper.KeyProperties.FirstOrDefault() ?? mapper.IndexedProperties.FirstOrDefault()};
+            var defaultSearchField = mapper.KeyProperties.FirstOrDefault() ?? mapper.IndexedProperties.FirstOrDefault();
+            return new FieldMappingQueryParser<T>(version, defaultSearchField, mapper);
         }
 
         /// <summary>
-        /// Create a <see cref="QueryParsers.QueryParser"/> suitable for parsing advanced queries
+        /// Create a <see cref="Lucene.Net.QueryParsers.Classic.QueryParser"/> suitable for parsing advanced queries
         /// that cannot not expressed as LINQ (e.g. queries submitted by a user).
         ///
-        /// After the instance is returned, options such as <see cref="QueryParsers.QueryParser.AllowLeadingWildcard"/>
-        /// and <see cref="QueryParsers.QueryParser.Field"/> can be customized to the clients needs.
+        /// After the instance is returned, options such as <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.AllowLeadingWildcard"/>
+        /// and <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.Field"/> can be customized to the clients needs.
         /// </summary>
         /// <typeparam name="T">The type of document that queries will be built against.</typeparam>
         /// <param name="defaultSearchField">The default field for queries that don't specify which field to search.
@@ -217,7 +218,7 @@ namespace Lucene.Net.Linq
 
         /// <summary>
         /// Returns an enumeration of fields names that are indexed for a given object.
-        /// This may be useful in conjunction with <see cref="CreateQueryParser{T}"/> to
+        /// This may be useful in conjunction with <see cref="CreateQueryParser{T}()"/> to
         /// allow users to specify advanced custom queries.
         /// </summary>
         public IEnumerable<string> GetIndexedPropertyNames<T>()

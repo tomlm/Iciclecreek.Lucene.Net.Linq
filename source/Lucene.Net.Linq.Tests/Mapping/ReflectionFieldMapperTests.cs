@@ -19,7 +19,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void SpecifyAnalyzer()
         {
-            var mapper = CreateMapper("Text", analyzer: new PorterStemAnalyzer(Net.Util.LuceneVersion.LUCENE_30));
+            var mapper = CreateMapper("Text", analyzer: new PorterStemAnalyzer(Net.Util.LuceneVersion.LUCENE_48));
 
             var query = mapper.CreateQuery("values");
 
@@ -29,7 +29,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void ParseMultipleTerms()
         {
-            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_30));
+            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_48));
 
             var query = mapper.CreateQuery("x y z");
             Assert.That(query.ToString(), Is.EqualTo("Text:x Text:y Text:z"));
@@ -47,7 +47,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void ParseMultipleTermsWithDefaultOperatorAnd()
         {
-            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_30), defaultParseOperaor: Operator.AND);
+            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_48), defaultParseOperaor: Operator.AND);
 
             var query = mapper.CreateQuery("x y z");
             Assert.That(query.ToString(), Is.EqualTo("+Text:x +Text:y +Text:z"));
@@ -98,7 +98,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void AnalyzesQueryValue()
         {
-            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_30));
+            var mapper = CreateMapper("Text", analyzer: new StandardAnalyzer(Net.Util.LuceneVersion.LUCENE_48));
 
             var result = mapper.CreateRangeQuery("SomeValue", null, RangeType.Inclusive, RangeType.Inclusive);
 

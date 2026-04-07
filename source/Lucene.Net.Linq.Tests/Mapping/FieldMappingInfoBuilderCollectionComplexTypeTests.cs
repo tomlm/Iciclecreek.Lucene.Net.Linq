@@ -43,8 +43,8 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             Versions = new[] { new Version(1, 0) };
 
-            document.Add(new Field("Versions", "5.6", Field.Store.YES, Field.Index.NO));
-            document.Add(new Field("Versions", "5.7", Field.Store.YES, Field.Index.NO));
+            document.Add(new StoredField("Versions", "5.6"));
+            document.Add(new StoredField("Versions", "5.7"));
 
             CreateMapper().CopyFromDocument(document, new QueryExecutionContext(), this);
 

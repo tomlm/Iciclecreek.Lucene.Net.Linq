@@ -28,7 +28,7 @@ namespace Lucene.Net.Linq.Abstractions
         DirectoryReader GetReader();
 
         /// <summary>
-        /// Whether the writer has been closed by <see cref="Dispose"/>
+        /// Whether the writer has been closed by <see cref="System.IDisposable.Dispose"/>
         /// or <see cref="Rollback"/>.
         /// </summary>
         bool IsClosed { get; }

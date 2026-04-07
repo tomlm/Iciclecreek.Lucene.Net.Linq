@@ -19,7 +19,7 @@ namespace Lucene.Net.Linq.Mapping
 
         internal static IFieldMapper<T> Build<T>(PropertyInfo p)
         {
-            return Build<T>(p, Version.LUCENE_30, null);
+            return Build<T>(p, Version.LUCENE_48, null);
         }
 
         internal static IFieldMapper<T> Build<T>(PropertyInfo p, Version version, Analyzer externalAnalyzer)

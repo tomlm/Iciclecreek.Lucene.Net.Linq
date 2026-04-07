@@ -15,7 +15,6 @@ namespace Lucene.Net.Linq
         private readonly string initialDefaultField;
         private static readonly string DefaultField = typeof(FieldMappingQueryParser<T>).FullName + ".DEFAULT_FIELD";
 
-        [Obsolete("Use constructor with default search field")]
         public FieldMappingQueryParser(Version matchVersion, IDocumentMapper<T> mapper)
             : base(matchVersion, DefaultField, mapper.Analyzer)
         {
@@ -34,7 +33,12 @@ namespace Lucene.Net.Linq
             this.mapper = mapper;
         }
 
-        [Obsolete("Set the default search field in the constructor instead")]
+        /// <summary>
+        /// Default property for queries that don't specify which field to search.
+        /// For an example query like <c>Lucene OR NuGet</c>, if this property is
+        /// set to <c>SearchText</c>, it will produce a query like
+        /// <c>SearchText:Lucene OR SearchText:NuGet</c>.
+        /// </summary>
         public string DefaultSearchProperty { get; set; }
 
         public Version MatchVersion => matchVersion;

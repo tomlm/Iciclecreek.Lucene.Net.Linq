@@ -114,14 +114,14 @@ namespace Lucene.Net.Linq.Mapping
 
         /// <summary>
         /// Overrides default format pattern to use when converting ValueType
-        /// to string. If both <c cref="Format">Format</c> and
+        /// to string. If both <see cref="Format">Format</see> and
         /// <c cref="BaseFieldAttribute.Converter">Converter</c> are specified, <c>Converter</c>
         /// will take precedence and <c>Format</c> will be ignored.
         /// </summary>
         public string Format { get; set; }
 
         /// <summary>
-        /// When <c>true</c>, causes <c cref="QueryParser.LowercaseExpandedTerms"/> to
+        /// When <c>true</c>, causes <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.LowercaseExpandedTerms"/> to
         /// be set to false to prevent wildcard queries like <c>Foo*</c> from being
         /// converted to lowercase.
         /// </summary>
@@ -146,14 +146,14 @@ namespace Lucene.Net.Linq.Mapping
         public Type Analyzer { get; set; }
 
         /// <summary>
-        /// Maps to <see cref="Field.TermVector"/>
+        /// Maps to <c>Field.TermVector</c>
         /// </summary>
         public TermVectorMode TermVector { get; set; }
 
         /// <summary>
         /// When <c>true</c> and the property implements <see cref="IComparable"/>
         /// and/or <see cref="IComparable{T}"/>, instructs the mapping engine to
-        /// use <see cref="SortField.STRING"/> instead of converting each field
+        /// use <see cref="Lucene.Net.Search.SortFieldType.STRING"/> instead of converting each field
         /// and using <see cref="IComparable{T}.CompareTo"/>. This is a performance
         /// enhancement in cases where the string representation of a complex type
         /// is alphanumerically sortable.
@@ -164,11 +164,11 @@ namespace Lucene.Net.Linq.Mapping
     /// <summary>
     /// Maps a <c cref="ValueType"/>, or any type that can be converted
     /// to <c cref="int"/>, <c cref="long"/>, <c cref="double"/>, or
-    /// <c cref="float"/> to a <c cref="NumericField"/> that will be
+    /// <c cref="float"/> to a <c>NumericField</c> that will be
     /// indexed as a trie structure to enable more efficient range filtering
     /// and sorting.
     /// </summary>
-    /// <see cref="NumericField"/>
+    /// <c>NumericField</c>
     [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
     public class NumericFieldAttribute : BaseFieldAttribute
     {

@@ -136,7 +136,7 @@ namespace Lucene.Net.Linq.Mapping
                 return query;
             }
 
-            var queryParser = new QueryParser(Version.LUCENE_30, FieldName, analyzer)
+            var queryParser = new QueryParser(Version.LUCENE_48, FieldName, analyzer)
             {
                 AllowLeadingWildcard = true,
                 LowercaseExpandedTerms = !CaseSensitive,

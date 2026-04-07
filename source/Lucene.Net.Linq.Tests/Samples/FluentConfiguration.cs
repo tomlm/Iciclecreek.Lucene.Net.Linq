@@ -9,13 +9,13 @@ namespace Sample
     {
         public void CreateMapping()
         {
-            var map = new ClassMap<Package>(Version.LUCENE_30);
+            var map = new ClassMap<Package>(Version.LUCENE_48);
 
             map.Key(p => p.Id);
             map.Key(p => p.Version).ConvertWith(new VersionConverter());
 
             map.Property(p => p.Description)
-                .AnalyzeWith(new PorterStemAnalyzer(Version.LUCENE_30))
+                .AnalyzeWith(new PorterStemAnalyzer(Version.LUCENE_48))
                 .WithTermVector.PositionsAndOffsets();
 
             map.Property(p => p.DownloadCount)

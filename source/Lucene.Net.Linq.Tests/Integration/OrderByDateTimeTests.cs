@@ -21,7 +21,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         public override void InitializeLucene()
         {
             directory = new RAMDirectory();
-            provider = new LuceneDataProvider(directory, Net.Util.LuceneVersion.LUCENE_30);
+            provider = new LuceneDataProvider(directory, Net.Util.LuceneVersion.LUCENE_48);
 
             AddDocument(new Sample {DateTime = time1});
             AddDocument(new Sample {DateTime = time2});

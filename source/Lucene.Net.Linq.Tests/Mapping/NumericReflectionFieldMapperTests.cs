@@ -54,8 +54,8 @@ namespace Lucene.Net.Linq.Tests.Mapping
             // Stage 5 port: precisionStep is no longer reflected on the
             // TokenStream representation; the typed-field constructors carry
             // it implicitly. Just verify that a numeric value made it onto
-            // the document.
-            Assert.That(field.GetNumericValue(), Is.Not.Null);
+            // the document via the typed accessor.
+            Assert.That(field.NumericType, Is.Not.EqualTo(global::Lucene.Net.Documents.NumericFieldType.NONE));
         }
 
         [Test]

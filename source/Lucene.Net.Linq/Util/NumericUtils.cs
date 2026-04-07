@@ -59,7 +59,6 @@ namespace Lucene.Net.Linq.Util
         /// Converts supported value types such as DateTime to an underlying ValueType that is supported by
         /// <c ref="NumericRangeQuery"/>.
         /// </summary>
-        [Obsolete]
         internal static ValueType ToNumericFieldValue(this ValueType value)
         {
             if (value is DateTime)

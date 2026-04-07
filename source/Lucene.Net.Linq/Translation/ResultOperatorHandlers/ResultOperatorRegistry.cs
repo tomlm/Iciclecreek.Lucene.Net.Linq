@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Lucene.Net.Linq.Util;
-using Lucene.Net.Linq.Util;
 
 namespace Lucene.Net.Linq.Translation.ResultOperatorHandlers
 {

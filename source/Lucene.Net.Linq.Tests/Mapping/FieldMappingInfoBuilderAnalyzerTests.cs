@@ -17,12 +17,12 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void UsesExternalAnalyzerWhenProvided()
         {
-            var externalAnalyzer = new StandardAnalyzer(Version.LUCENE_30);
+            var externalAnalyzer = new StandardAnalyzer(Version.LUCENE_48);
 
             var mapper = (ReflectionFieldMapper<FieldMappingInfoBuilderAnalyzerTests>)FieldMappingInfoBuilder
                 .Build<FieldMappingInfoBuilderAnalyzerTests>(
                     GetType().GetProperty("Simple"),
-                    Version.LUCENE_30,
+                    Version.LUCENE_48,
                     externalAnalyzer);
 
             Assert.That(mapper.Analyzer, Is.SameAs(externalAnalyzer));
@@ -93,7 +93,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void AnalyzerMustInheritFromBase()
         {
-            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof (object), Version.LUCENE_30);
+            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof (object), Version.LUCENE_48);
 
             Assert.That(call, Throws.InvalidOperationException);
         }
@@ -101,7 +101,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void AnalyzerMustHavePublicCtr()
         {
-            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof(Private), Version.LUCENE_30);
+            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof(Private), Version.LUCENE_48);
 
             Assert.That(call, Throws.InvalidOperationException);
         }
@@ -119,7 +119,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
                 .Build<FieldMappingInfoBuilderAnalyzerTests>(
                     GetType()
                     .GetProperty(propertyName),
-                    Version.LUCENE_30,
+                    Version.LUCENE_48,
                     null);
         }
     }

@@ -17,7 +17,7 @@ namespace Lucene.Net.Linq.Fluent
     public class ClassMap<T>
     {
         private readonly Version version;
-        private readonly ISet<PropertyMap<T>> properties = new HashSet<PropertyMap<T>>(new PartComparer<T>());
+        private readonly ISet<PropertyMap<T>> properties = new HashSet<PropertyMap<T>>(new PartComparer());
         private readonly IDictionary<string, string> documentKeys = new Dictionary<string, string>(StringComparer.Ordinal);
         private ReflectionScoreMapper<T> scoreMapper;
         private ReflectionDocumentBoostMapper<T> docBoostMapper;
@@ -175,10 +175,9 @@ namespace Lucene.Net.Linq.Fluent
 
         /// <summary>
         /// Ensures ISet contains unique <see cref="PropertyMap{T}"/>s by
-        /// PropertyName.
+        /// PropertyName. Uses the enclosing ClassMap's type parameter <c>T</c>.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        internal class PartComparer<T> : IEqualityComparer<PropertyMap<T>>
+        internal class PartComparer : IEqualityComparer<PropertyMap<T>>
         {
             public bool Equals(PropertyMap<T> x, PropertyMap<T> y)
             {

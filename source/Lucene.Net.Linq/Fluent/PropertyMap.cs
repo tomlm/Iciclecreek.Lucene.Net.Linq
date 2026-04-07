@@ -53,8 +53,8 @@ namespace Lucene.Net.Linq.Fluent
         }
 
         /// <summary>
-        /// Configure values to be stored using <see cref="NumericField"/> instead
-        /// of default <see cref="Field"/>.
+        /// Configure values to be stored using <c>NumericField</c> instead
+        /// of default <see cref="Lucene.Net.Documents.Field"/>.
         /// </summary>
         public NumericPropertyMap<T> AsNumericField()
         {
@@ -167,7 +167,7 @@ namespace Lucene.Net.Linq.Fluent
         /// Specify that values for this field are case sensitive as
         /// opposed to the default behavior which assumes that the
         /// analyzer will convert tokens to lower case at indexing time.
-        /// This controls <see cref="QueryParser.LowercaseExpandedTerms"/>
+        /// This controls <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.LowercaseExpandedTerms"/>
         /// when building queries.
         /// </summary>
         public PropertyMap<T> CaseSensitive()
@@ -178,7 +178,7 @@ namespace Lucene.Net.Linq.Fluent
 
         /// <summary>
         /// Controls whether term vectors are stored for later retrieval.
-        /// See <see cref="Field.TermVector"/> for more info.
+        /// See <c>Field.TermVector</c> for more info.
         /// </summary>
         public TermVectorPart<T> WithTermVector
         {
@@ -189,8 +189,8 @@ namespace Lucene.Net.Linq.Fluent
         }
 
         /// <summary>
-        /// Set the <see cref="QueryParser.DefaultOperator"/> to
-        /// use <see cref="QueryParser.AND_OPERATOR"/> by default
+        /// Set the <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.DefaultOperator"/> to
+        /// use <see cref="Lucene.Net.QueryParsers.Classic.Operator.AND"/> by default
         /// when parsing queries that contain multiple terms.
         /// </summary>
         public PropertyMap<T> ParseWithAndOperatorByDefault()
@@ -200,8 +200,8 @@ namespace Lucene.Net.Linq.Fluent
         }
 
         /// <summary>
-        /// Set the <see cref="QueryParser.DefaultOperator"/> to
-        /// use <see cref="QueryParser.OR_OPERATOR"/> by default
+        /// Set the <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.DefaultOperator"/> to
+        /// use <see cref="Lucene.Net.QueryParsers.Classic.Operator.OR"/> by default
         /// when parsing queries that contain multiple terms. This
         /// is the default behavior.
         /// </summary>

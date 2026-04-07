@@ -65,7 +65,7 @@ namespace Lucene.Net.Linq
         /// has one or more entries, the filter will
         /// be initialized to match documents that
         /// have the corresponding fields or match
-        /// specific criteria defined by <see cref="IFieldMappingInfo.KeyConstraint"/>
+        /// specific criteria defined by <see cref="Lucene.Net.Linq.KeyConstraint"/>
         /// </summary>
         Filter Filter { get; set; }
     }

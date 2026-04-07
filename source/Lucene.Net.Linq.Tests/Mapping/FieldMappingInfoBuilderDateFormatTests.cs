@@ -50,7 +50,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             var ts = DateTime.SpecifyKind(new DateTime(2013, 1, 2, 3, 40, 50), DateTimeKind.Utc);
 
-            doc.Add(new Field("TimeStamp", "2013-01-02T03:40:50", Field.Store.YES, Field.Index.NOT_ANALYZED));
+            doc.Add(new StringField("TimeStamp", "2013-01-02T03:40:50", Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 
@@ -93,7 +93,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             var ts = DateTime.SpecifyKind(new DateTime(2013, 1, 2, 18, 40, 50), DateTimeKind.Utc);
 
-            doc.Add(new Field("SillyTime", ts.ToString(SillyFormat), Field.Store.YES, Field.Index.NOT_ANALYZED));
+            doc.Add(new StringField("SillyTime", ts.ToString(SillyFormat), Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 

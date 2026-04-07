@@ -31,7 +31,7 @@ namespace Lucene.Net.Linq.Tests.Fluent
         public class SampleMap : ClassMap<Sample>
         {
             public SampleMap()
-                :base(Version.LUCENE_30)
+                :base(Version.LUCENE_48)
             {
             }
         }
