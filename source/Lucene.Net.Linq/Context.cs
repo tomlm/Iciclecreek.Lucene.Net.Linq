@@ -131,7 +131,25 @@ namespace Lucene.Net.Linq
 
         protected virtual IndexSearcher CreateSearcher()
         {
-            return new IndexSearcher(DirectoryReader.Open(directory));
+            try
+            {
+                return new IndexSearcher(DirectoryReader.Open(directory));
+            }
+            catch (Lucene.Net.Index.IndexNotFoundException)
+            {
+                // Lucene 4.8 throws IndexNotFoundException when no segments
+                // file exists yet. Lay down an empty commit so the directory
+                // becomes openable, then retry. (Lucene 3 silently returned
+                // an empty reader in this case.)
+                using (var temp = new Lucene.Net.Index.IndexWriter(
+                    directory,
+                    new Lucene.Net.Index.IndexWriterConfig(global::Lucene.Net.Util.LuceneVersion.LUCENE_48,
+                        new Lucene.Net.Analysis.Core.KeywordAnalyzer())))
+                {
+                    temp.Commit();
+                }
+                return new IndexSearcher(DirectoryReader.Open(directory));
+            }
         }
 
         /// <summary>

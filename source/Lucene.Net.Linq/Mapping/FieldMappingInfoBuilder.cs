@@ -150,21 +150,28 @@ namespace Lucene.Net.Linq.Mapping
                 throw new InvalidOperationException("The type " + analyzer + " does not inherit from " + typeof(Analyzer));
             }
 
-            var versionCtr = analyzer.GetConstructor(new[] { typeof(Version) });
+            // Lucene.Net 4.8 analyzers typically take a LuceneVersion (the
+            // raw enum) rather than the legacy Version wrapper struct. Try
+            // both ctor shapes.
+            var luceneVersionCtr = analyzer.GetConstructor(new[] { typeof(global::Lucene.Net.Util.LuceneVersion) });
+            if (luceneVersionCtr != null)
+            {
+                return (Analyzer)luceneVersionCtr.Invoke(new object[] { (global::Lucene.Net.Util.LuceneVersion)version });
+            }
 
+            var versionCtr = analyzer.GetConstructor(new[] { typeof(Version) });
             if (versionCtr != null)
             {
                 return (Analyzer)versionCtr.Invoke(new object[] { version });
             }
 
             var defaultCtr = analyzer.GetConstructor(new Type[0]);
-
             if (defaultCtr != null)
             {
                 return (Analyzer)defaultCtr.Invoke(null);
             }
 
-            throw new InvalidOperationException("The analyzer type " + analyzer + " must have a public default constructor or public constructor that accepts " + typeof(Version));
+            throw new InvalidOperationException("The analyzer type " + analyzer + " must have a public default constructor, a constructor accepting " + typeof(Version) + ", or one accepting " + typeof(global::Lucene.Net.Util.LuceneVersion));
         }
     }
 }

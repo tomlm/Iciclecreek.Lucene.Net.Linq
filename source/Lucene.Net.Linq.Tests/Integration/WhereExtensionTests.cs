@@ -259,7 +259,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Key:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Key:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Key"));
         }
 
@@ -271,7 +271,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Name"));
         }
 
@@ -282,7 +282,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Name"));
         }
     }

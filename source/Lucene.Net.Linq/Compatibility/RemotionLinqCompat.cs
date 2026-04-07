@@ -74,7 +74,28 @@ namespace Remotion.Linq.Parsing
         protected virtual Expression VisitConstantExpression(ConstantExpression node) => base.VisitConstant(node);
 
         protected sealed override Expression VisitUnary(UnaryExpression node) => VisitUnaryExpression(node);
-        protected virtual Expression VisitUnaryExpression(UnaryExpression node) => base.VisitUnary(node);
+        protected virtual Expression VisitUnaryExpression(UnaryExpression node)
+        {
+            // Stage 6 port: re-linq 1.x's ExpressionTreeVisitor recreated
+            // unary nodes via Expression.MakeUnary without going through the
+            // BCL ExpressionVisitor's Update + ValidateUnary path. The BCL
+            // validation throws when a transforming visitor (such as
+            // NoOpConvertExpressionRemovingVisitor) replaces an operand with
+            // one of a different type. We bypass that by reconstructing
+            // manually here, the way re-linq 1.x did.
+            var newOperand = Visit(node.Operand);
+            if (ReferenceEquals(newOperand, node.Operand)) return node;
+            try
+            {
+                return Expression.MakeUnary(node.NodeType, newOperand, node.Type, node.Method);
+            }
+            catch (System.InvalidOperationException)
+            {
+                // MakeUnary itself rejected the rewrite; fall back to the
+                // original to keep the visitor pipeline running.
+                return node;
+            }
+        }
 
         protected sealed override Expression VisitConditional(ConditionalExpression node) => VisitConditionalExpression(node);
         protected virtual Expression VisitConditionalExpression(ConditionalExpression node) => base.VisitConditional(node);

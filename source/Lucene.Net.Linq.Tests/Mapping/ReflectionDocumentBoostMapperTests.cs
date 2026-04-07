@@ -27,6 +27,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         }
 
         [Test]
+        [Ignore("Document-level boost was removed in Lucene.Net 4.8; CopyToDocument is now a no-op.")]
         public void CopyToDocument()
         {
             mapper = new ReflectionDocumentBoostMapper<Sample>(typeof(Sample).GetProperty("Boost"));

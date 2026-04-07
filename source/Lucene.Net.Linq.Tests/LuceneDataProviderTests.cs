@@ -47,6 +47,10 @@ namespace Lucene.Net.Linq.Tests
         {
             var directory = new RAMDirectory();
             var writer = new IndexWriter(directory, new IndexWriterConfig(LuceneVersion.LUCENE_48, new CaseInsensitiveKeywordAnalyzer()));
+            // Stage 6 port: Lucene 4.8 doesn't lay down segments until the
+            // first AddDocument; an empty commit gives DirectoryReader.Open
+            // a segments_* file to work with.
+            writer.Commit();
             var provider = new LuceneDataProvider(directory, new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_29, writer);
 
             var count = -1;

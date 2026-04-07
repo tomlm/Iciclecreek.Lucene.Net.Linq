@@ -40,6 +40,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        [Ignore("Numeric-field boost was removed in Lucene.Net 4.8 (numeric fields don't index norms). See library TODO in NumericReflectionFieldMapper.")]
         public void NumericFieldBoost()
         {
             AddDocument(new BoostDocument { Body = "5", Popularity = 0 });

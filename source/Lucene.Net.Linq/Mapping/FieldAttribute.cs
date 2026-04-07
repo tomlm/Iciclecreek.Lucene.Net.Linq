@@ -32,7 +32,10 @@ namespace Lucene.Net.Linq.Mapping
         /// Specifies the name of the backing field that the property value will be mapped to.
         /// When not specified, defaults to the name of the property being decorated by this attribute.
         /// </summary>
-        public string Field { get { return field; } }
+        // 'this.field' bypasses C# 13's contextual `field` keyword inside
+        // property accessors, which would otherwise synthesize a separate
+        // (always-null) backing field for this Field property.
+        public string Field { get { return this.field; } }
 
         /// <summary>
         /// Set to true to store value in index for later retrieval, or

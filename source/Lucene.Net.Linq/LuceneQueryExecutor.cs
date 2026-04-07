@@ -208,7 +208,19 @@ namespace Lucene.Net.Linq
                 PrepareSearchSettings(executionContext);
 
                 var elapsedPreparationTime = watch.Elapsed;
-                var hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                // Lucene 4.8's IndexSearcher.Search throws ArgumentException
+                // when nDocs is 0 (TopFieldCollector.Create requires
+                // numHits > 0). Short-circuit on empty result sets so callers
+                // like Min/Max see an empty enumerable rather than a crash.
+                TopFieldDocs hits;
+                if (maxResults + skipResults <= 0)
+                {
+                    hits = new TopFieldDocs(0, new ScoreDoc[0], new SortField[0], 0);
+                }
+                else
+                {
+                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                }
                 var elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
 
                 executionContext.Phase = QueryExecutionPhase.ConvertResults;

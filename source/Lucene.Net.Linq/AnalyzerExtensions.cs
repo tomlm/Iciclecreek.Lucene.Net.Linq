@@ -17,7 +17,14 @@ namespace Lucene.Net.Linq
         {
             try
             {
-                perFieldAnalyzer.AddAnalyzer(((MemberExpression)fieldName.Body).Member.Name, analyzer);
+                // Value-typed properties produce a Convert(MemberExpression) wrapper
+                // when bound to Func<T, object>; unwrap to find the member.
+                var body = fieldName.Body;
+                if (body is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
+                {
+                    body = unary.Operand;
+                }
+                perFieldAnalyzer.AddAnalyzer(((MemberExpression)body).Member.Name, analyzer);
             }
             catch (Exception ex)
             {

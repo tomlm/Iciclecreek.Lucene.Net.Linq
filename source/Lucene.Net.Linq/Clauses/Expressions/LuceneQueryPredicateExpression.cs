@@ -28,7 +28,7 @@ namespace Lucene.Net.Linq.Clauses.Expressions
 
         public LuceneQueryFieldExpression QueryField
         {
-            get { return field; }
+            get { return this.field; }
         }
 
         public Expression QueryPattern

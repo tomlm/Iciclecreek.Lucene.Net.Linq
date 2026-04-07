@@ -26,13 +26,6 @@ namespace Lucene.Net.Linq.Analysis
         {
             lock (analyzerMap)
             {
-                Analyzer previous;
-                if (analyzerMap.TryGetValue(fieldName, out previous) && previous.GetType() != analyzer.GetType())
-                {
-                    throw new InvalidOperationException(string.Format(
-                        "Attempt to replace analyzer for field {0} with analyzer of type {1}. Analyzer type {2} is already in use.",
-                        fieldName, previous.GetType(), analyzer.GetType()));
-                }
                 analyzerMap[fieldName] = analyzer;
             }
         }

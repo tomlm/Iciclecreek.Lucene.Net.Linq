@@ -10,7 +10,8 @@
       "Bash(dotnet exec:*)",
       "Bash(dotnet-script --version)",
       "Bash(grep -oE \"Tests[\\\\\\\\/][^:]+\\\\.cs\")",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(grep -v \"^--$\\\\|Error Message\")"
     ]
   }
 }

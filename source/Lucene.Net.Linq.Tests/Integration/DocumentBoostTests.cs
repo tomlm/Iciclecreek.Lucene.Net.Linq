@@ -25,6 +25,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        [Ignore("Document-level boost was removed in Lucene.Net 4.8; ReflectionDocumentBoostMapper.CopyToDocument is now a no-op. See library TODO.")]
         public void DocumentBoost()
         {
             AddDocument(new BoostDocument { Key = 1, Title = "foo", Boost = 1f });

@@ -40,6 +40,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Lucene.Net.Linq.Tests" />
+    <!-- Required so Castle DynamicProxy (used by NSubstitute) can subclass
+         our internal types Context, ExpressionTreeVisitor (compat shim), etc. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 
 </Project>

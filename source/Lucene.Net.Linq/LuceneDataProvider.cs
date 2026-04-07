@@ -449,6 +449,14 @@ namespace Lucene.Net.Linq
             }
 
             var indexWriter = new IndexWriter(directory, config);
+
+            // In Lucene 4.8 a brand-new IndexWriter does not lay down any
+            // segments until the first document is added. DirectoryReader.Open
+            // then throws IndexNotFoundException because there is no
+            // segments_* file. Force an empty commit so readers can open
+            // the index immediately.
+            indexWriter.Commit();
+
             return new IndexWriterAdapter(indexWriter);
         }
 

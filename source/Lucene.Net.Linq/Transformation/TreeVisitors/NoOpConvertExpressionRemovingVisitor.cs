@@ -42,6 +42,10 @@ namespace Lucene.Net.Linq.Transformation.TreeVisitors
         {
             if (expression.NodeType == ExpressionType.Convert)
             {
+                // Strip the Convert wrapper unconditionally. The shim's
+                // VisitUnaryExpression default rebuilds parent unary nodes
+                // via Expression.MakeUnary (without BCL Update validation),
+                // so type-changing rewrites no longer trip ValidateUnary.
                 return base.VisitExpression(expression.Operand);
             }
 

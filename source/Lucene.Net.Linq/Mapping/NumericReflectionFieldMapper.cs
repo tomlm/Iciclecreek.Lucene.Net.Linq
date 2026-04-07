@@ -45,18 +45,21 @@ namespace Lucene.Net.Linq.Mapping
 
         protected internal override object ConvertFieldValue(IIndexableField field)
         {
-            var value = (object)null;
+            object value;
 
-            // Numeric typed fields expose strongly-typed accessors; fall back
-            // to the string representation if the field was indexed via the
-            // legacy code path.
-            if (field.NumericType != NumericFieldType.NONE)
+            // Numeric typed fields expose strongly-typed accessors; we use
+            // those rather than GetNumericValue() because in Lucene.Net 4.8
+            // the latter returns a boxed J2N.Numerics.Int64/Int32/Single/Double
+            // wrapper that does NOT cast directly to System.Int64/etc. The
+            // typed accessors return BCL primitives.
+            switch (field.NumericType)
             {
-                value = field.GetNumericValue();
-            }
-            else
-            {
-                value = field.GetStringValue();
+                case NumericFieldType.INT64:  value = field.GetInt64Value(); break;
+                case NumericFieldType.INT32:  value = field.GetInt32Value(); break;
+                case NumericFieldType.DOUBLE: value = field.GetDoubleValue(); break;
+                case NumericFieldType.SINGLE: value = field.GetSingleValue(); break;
+                case NumericFieldType.NONE:
+                default:                      value = field.GetStringValue(); break;
             }
 
             if (typeToValueTypeConverter != null)
@@ -65,7 +68,8 @@ namespace Lucene.Net.Linq.Mapping
             }
             else if (value is string s)
             {
-                // restore the boxed primitive
+                // Field was stored via the legacy string code path; coerce
+                // back to the underlying property type.
                 var propType = propertyInfo.PropertyType.GetUnderlyingType();
                 value = Convert.ChangeType(s, propType);
             }
@@ -82,6 +86,13 @@ namespace Lucene.Net.Linq.Mapping
             if (value == null) return;
 
             value = ConvertToSupportedValueType(value);
+
+            // Coerce enums to their underlying integral primitive so the
+            // switch below picks up the right typed-field constructor.
+            if (value != null && value.GetType().IsEnum)
+            {
+                value = Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()));
+            }
 
             var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
             Field numericField;
