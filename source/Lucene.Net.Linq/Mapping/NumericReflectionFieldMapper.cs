@@ -8,6 +8,7 @@ using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 
 namespace Lucene.Net.Linq.Mapping
@@ -20,7 +21,12 @@ namespace Lucene.Net.Linq.Mapping
         private readonly int precisionStep;
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost)
-            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, false, new KeywordAnalyzer(), boost)
+            : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues: false)
+        {
+        }
+
+        public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues)
+            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues)
         {
             this.typeToValueTypeConverter = typeToValueTypeConverter;
             this.precisionStep = precisionStep;
@@ -97,19 +103,24 @@ namespace Lucene.Net.Linq.Mapping
             var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
             Field numericField;
 
+            Field dvField = null;
             switch (value)
             {
                 case int i:
                     numericField = new Int32Field(fieldName, i, fieldStore);
+                    if (docValues) dvField = new NumericDocValuesField(fieldName, i);
                     break;
                 case long l:
                     numericField = new Int64Field(fieldName, l, fieldStore);
+                    if (docValues) dvField = new NumericDocValuesField(fieldName, l);
                     break;
                 case float f:
                     numericField = new SingleField(fieldName, f, fieldStore);
+                    if (docValues) dvField = new SingleDocValuesField(fieldName, f);
                     break;
                 case double d:
                     numericField = new DoubleField(fieldName, d, fieldStore);
+                    if (docValues) dvField = new DoubleDocValuesField(fieldName, d);
                     break;
                 default:
                     throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as a numeric field.", nameof(source));
@@ -119,6 +130,7 @@ namespace Lucene.Net.Linq.Mapping
             // (norms are required for boost, and numeric fields don't index
             // norms). Boost is silently dropped if not the default.
             target.Add(numericField);
+            if (dvField != null) target.Add(dvField);
         }
 
         public override string ConvertToQueryExpression(object value)

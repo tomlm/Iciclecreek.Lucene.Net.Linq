@@ -67,6 +67,33 @@ namespace Lucene.Net.Linq.Mapping
         /// </summary>
         public float Boost { get; set; }
 
+        /// <summary>
+        /// When <c>true</c>, write a Lucene 4.8 DocValues column for this field at
+        /// index time so sorting, grouping and faceting read from the column store
+        /// instead of uninverting the indexed terms via <c>FieldCache</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Defaults to <c>false</c>. Opt in per field when sort/group/facet performance
+        /// matters; without it, sort falls back to <c>FieldCache</c> uninversion which
+        /// is correct but slower on first touch.
+        /// </para>
+        /// <para>
+        /// Silently ignored for <see cref="System.Collections.Generic.IEnumerable{T}"/>
+        /// properties: Lucene.Net 4.8.0-beta00017 lacks <c>SortedNumericDocValuesField</c>,
+        /// and the LINQ ordering semantics don't fit <c>SortedSetDocValuesField</c>.
+        /// </para>
+        /// <para>
+        /// On reference-type properties with a <see cref="TypeConverter"/>, enabling
+        /// DocValues causes the sort to compare the converter's <em>string output</em>
+        /// byte-by-byte. That is wrong for converters like
+        /// <c>System.ComponentModel.VersionConverter</c> where <c>"10.0"</c> should
+        /// sort after <c>"2.0"</c>. For those types, leave <c>DocValues=false</c>
+        /// and rely on the converter-comparator fallback.
+        /// </para>
+        /// </remarks>
+        public bool DocValues { get; set; }
+
         internal TypeConverter ConverterInstance { get; set; }
     }
 

@@ -58,6 +58,23 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void OrderBy_Int_MultiDigit()
+        {
+            writer.DeleteAll();
+
+            AddDocument(new SampleDocument { Scalar = 2 });
+            AddDocument(new SampleDocument { Scalar = 10 });
+            AddDocument(new SampleDocument { Scalar = 1 });
+            AddDocument(new SampleDocument { Scalar = 20 });
+
+            var documents = provider.AsQueryable<SampleDocument>();
+
+            var result = from d in documents orderby d.Scalar select d.Scalar;
+
+            Assert.That(result.ToArray(), Is.EqualTo(new[] { 1, 2, 10, 20 }));
+        }
+
+        [Test]
         public void OrderBy_Long()
         {
             writer.DeleteAll();

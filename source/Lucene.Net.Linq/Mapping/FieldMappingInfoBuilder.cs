@@ -41,11 +41,11 @@ namespace Lucene.Net.Linq.Mapping
 
             if (numericFieldAttribute != null)
             {
-                mapper = NumericFieldMappingInfoBuilder.BuildNumeric<T>(p, type, numericFieldAttribute);
+                mapper = NumericFieldMappingInfoBuilder.BuildNumeric<T>(p, type, numericFieldAttribute, isCollection);
             }
             else
             {
-                mapper = BuildPrimitive<T>(p, type, metadata, version, externalAnalyzer);
+                mapper = BuildPrimitive<T>(p, type, metadata, version, externalAnalyzer, isCollection);
             }
 
             return isCollection ? new CollectionReflectionFieldMapper<T>(mapper, type) : mapper;
@@ -64,7 +64,7 @@ namespace Lucene.Net.Linq.Mapping
             return false;
         }
 
-        private static ReflectionFieldMapper<T> BuildPrimitive<T>(PropertyInfo p, Type type, FieldAttribute metadata, Version version, Analyzer externalAnalyzer)
+        private static ReflectionFieldMapper<T> BuildPrimitive<T>(PropertyInfo p, Type type, FieldAttribute metadata, Version version, Analyzer externalAnalyzer, bool isCollection)
         {
             var fieldName = (metadata != null ? metadata.Field : null) ?? p.Name;
             var converter = GetConverter(p, type, metadata);
@@ -76,8 +76,13 @@ namespace Lucene.Net.Linq.Mapping
             var caseSensitive = GetCaseSensitivity(metadata, converter);
             var analyzer = externalAnalyzer ?? BuildAnalyzer(metadata, converter, version);
             var nativeSort = metadata != null && metadata.NativeSort;
+            // Collections are silently downgraded: SortedNumericDocValuesField
+            // is not in Lucene.Net 4.8.0-beta00017 and SortedSetDocValuesField
+            // doesn't fit single-value LINQ ordering. Documented on
+            // BaseFieldAttribute.DocValues.
+            var docValues = !isCollection && metadata != null && metadata.DocValues;
 
-            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort);
+            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues);
         }
 
         internal static Analyzer BuildAnalyzer(FieldAttribute metadata, TypeConverter converter, Version version)

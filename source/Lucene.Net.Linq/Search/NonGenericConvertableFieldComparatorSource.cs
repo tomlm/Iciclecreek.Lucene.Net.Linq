@@ -10,6 +10,11 @@ namespace Lucene.Net.Linq.Search
     /// <see cref="FieldComparerSource"/> for properties whose <see cref="Type"/>
     /// implements only the non-generic <see cref="IComparable"/> interface, and
     /// is converted to/from string by an associated <see cref="TypeConverter"/>.
+    /// This is the fallback sort path used when <c>DocValues=false</c> on the
+    /// field attribute. Setting <c>DocValues=true</c> bypasses this comparator
+    /// entirely in favor of a typed <see cref="SortField"/> reading from the
+    /// SortedDocValues column — but only when byte-wise ordering of the
+    /// converter's string output matches the type's intended ordering.
     /// </summary>
     internal class NonGenericConvertableFieldComparatorSource : FieldComparerSource
     {

@@ -43,14 +43,16 @@ namespace Lucene.Net.Linq.Tests.Integration
                 Key = (count++).ToString();
             }
 
+            [Field(DocValues = true)]
             public string Name { get; set; }
 
-            [Field(IndexMode.NotAnalyzed)]
+            [Field(IndexMode.NotAnalyzed, DocValues = true)]
             public string Id { get; set; }
 
             [Field(Key = true)]
             public string Key { get; set; }
 
+            [NumericField]
             public int Scalar { get; set; }
 
             [NumericField]
@@ -62,7 +64,7 @@ namespace Lucene.Net.Linq.Tests.Integration
             [Field("backing_version", Converter = typeof(VersionConverter))]
             public System.Version Version { get; set; }
 
-            [Field("backing_field")]
+            [Field("backing_field", DocValues = true)]
             public string Alias { get; set; }
 
             [NumericField(Converter = typeof(BoolToIntConverter))]

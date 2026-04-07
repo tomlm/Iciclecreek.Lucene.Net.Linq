@@ -29,7 +29,7 @@ namespace Lucene.Net.Linq.Fluent
                     Store = store
                 };
 
-            return NumericFieldMappingInfoBuilder.BuildNumeric<T>(propInfo, PropertyType, attrib);
+            return NumericFieldMappingInfoBuilder.BuildNumeric<T>(propInfo, PropertyType, attrib, isCollection: false);
         }
 
         /// <summary>

@@ -9,6 +9,7 @@ using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
 using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
+using Lucene.Net.Util;
 using Version = Lucene.Net.Util.LuceneVersion;
 using System.Linq.Expressions;
 using System.Collections.Concurrent;
@@ -31,6 +32,7 @@ namespace Lucene.Net.Linq.Mapping
         protected readonly Analyzer analyzer;
         protected readonly float boost;
         protected readonly bool nativeSort;
+        protected readonly bool docValues;
         private readonly FieldType fieldType;
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector,
@@ -47,6 +49,11 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort = false)
+            : this(propertyInfo, store, index, termVector, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues: false)
+        {
+        }
+
+        public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort, bool docValues)
         {
             this.propertyInfo = propertyInfo;
             this.propertyGetter = CreatePropertyGetter(propertyInfo);
@@ -62,6 +69,7 @@ namespace Lucene.Net.Linq.Mapping
             this.analyzer = analyzer;
             this.boost = boost;
             this.nativeSort = nativeSort;
+            this.docValues = docValues;
             this.fieldType = FieldTypeBuilder.Build(store, index, termVector);
         }
 
@@ -77,6 +85,7 @@ namespace Lucene.Net.Linq.Mapping
         public virtual string PropertyName => propertyInfo.Name;
         public virtual Operator DefaultParseOperator => defaultParserOperator;
         public virtual bool NativeSort => nativeSort;
+        public virtual bool DocValues => docValues;
 
         public virtual object GetPropertyValue(T source) => propertyGetter(source);
 
@@ -238,6 +247,9 @@ namespace Lucene.Net.Linq.Mapping
 
         public virtual SortField CreateSortField(bool reverse)
         {
+            if (docValues)
+                return new SortField(FieldName, SortFieldType.STRING, reverse);
+
             if (Converter == null || NativeSort)
                 return new SortField(FieldName, SortFieldType.STRING, reverse);
 
@@ -310,6 +322,16 @@ namespace Lucene.Net.Linq.Mapping
                 var field = new Field(fieldName, fieldValue, fieldType);
                 field.Boost = Boost;
                 target.Add(field);
+
+                if (docValues)
+                {
+                    // Parallel SortedDocValues column for fast sort/group/facet.
+                    // Lucene 4.8 allows a same-named DV field alongside the
+                    // indexed/stored field; the typed SortField path reads
+                    // from this column at sort time without uninverting via
+                    // FieldCache.
+                    target.Add(new SortedDocValuesField(fieldName, new BytesRef(fieldValue)));
+                }
             }
         }
     }
