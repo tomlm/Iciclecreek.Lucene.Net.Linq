@@ -18,9 +18,6 @@ namespace Lucene.Net.Linq.Tests.Integration
             [Field(Analyzer = typeof(KeywordAnalyzer))]
             public string Body { get; set; }
 
-            [NumericField(Boost = 20f)]
-            public int Popularity { get; set; }
-
             [QueryScore]
             public float Score { get; set; }
         }
@@ -37,23 +34,6 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             Assert.That(result.First().Title, Is.EqualTo("truck"));
             Assert.That(result.OrderByDescending(doc => doc.Score()).First().Title, Is.EqualTo("car"));
-        }
-
-        [Test]
-        [Ignore("Numeric-field boost was removed in Lucene.Net 4.8 (numeric fields don't index norms). See library TODO in NumericReflectionFieldMapper.")]
-        public void NumericFieldBoost()
-        {
-            AddDocument(new BoostDocument { Body = "5", Popularity = 0 });
-            AddDocument(new BoostDocument { Body = "five", Popularity = 5 });
-
-            var result = from doc in provider.AsQueryable<BoostDocument>()
-                         where doc.Body == "5" || doc.Popularity == 5
-                         select doc;
-
-            Console.WriteLine(result.First().Score);
-            Console.WriteLine(result.Last().Score);
-            Assert.That(result.OrderBy(doc => doc.Score()).First().Body, Is.EqualTo("five"));
-            Assert.That(result.OrderByDescending(doc => doc.Score()).First().Body, Is.EqualTo("5"));
         }
     }
 }

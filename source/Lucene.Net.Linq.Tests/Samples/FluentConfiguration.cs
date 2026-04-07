@@ -25,8 +25,6 @@ namespace Sample
             map.Property(p => p.IconUrl).NotIndexed();
 
             map.Score(p => p.Score);
-
-            map.DocumentBoost(p => p.Boost);
         }
 
         public class Package
@@ -42,8 +40,6 @@ namespace Sample
             public int DownloadCount { get; set; }
 
             public float Score { get; set; }
-
-            public float Boost { get; set; }
         }
     }
 }
