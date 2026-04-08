@@ -359,30 +359,27 @@ fuzzy search, boosting, range, fielded queries — use the
 using Lucene.Net.Linq;
 
 var results = documents
-    .Where(d => d.Body.Matches("foo* AND -bar"))      // shorthand for Body field
-    .ToList();
-
-var results2 = documents
     .WhereParseQuery("title:foo* AND year:[2020 TO 2024]")
     .ToList();
 ```
 
 `WhereParseQuery` runs the input through Lucene's classic
-`QueryParser` against the provider's analyzer; `Matches` does the
-same but scoped to a single field.
+`QueryParser` against the provider's analyzer. To pass a
+pre-built `Lucene.Net.Search.Query` instead, use the
+`Where(IQueryable<T>, Query)` overload.
 
 ### Score and boost
 
 ```csharp
 // Order by relevance — highest score first.
 var top = documents
-    .Where(d => d.Body.Matches("lucene"))
+    .WhereParseQuery("body:lucene")
     .OrderByDescending(d => d.Score())
     .Take(10);
 
 // Per-query boost. Boost expressions can use document fields.
 var boosted = documents
-    .Where(d => d.Body.Matches("lucene"))
+    .WhereParseQuery("body:lucene")
     .Boost(d => d.WordCount / 100.0f);
 ```
 
@@ -438,7 +435,7 @@ using (var session = provider.OpenSession<Article>())
     session.Add(new Article { Id = "1", Title = "Hello" });
 
     var hits = session.Query()
-        .Where(a => a.Title.Matches("hello"))
+        .Where(a => a.Title == "hello")
         .ToList();
 
     foreach (var doc in hits) doc.Title = doc.Title.ToUpperInvariant();

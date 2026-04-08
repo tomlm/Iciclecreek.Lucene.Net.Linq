@@ -14,7 +14,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Iciclecreek.Lucene.Net.Linq</PackageId>
     <Version>4.8.0-beta00017</Version>
-    <Title>LuceneLinq</Title>
+    <Title>Iciclecreek.Lucene.Net.Linq</Title>
     <Authors>Chris Eldredge/Tom Laird-McConnell</Authors>
     <Owners>The Motley Fool, LLC</Owners>
     <Copyright>Copyright 2012-2014 The Motley Fool, LLC</Copyright>
