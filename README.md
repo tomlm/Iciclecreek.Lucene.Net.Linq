@@ -1,4 +1,4 @@
-## LINQ to Lucene.Net
+## LINQ to Lucene.Net modern
 
 [![Build status](https://ci.appveyor.com/api/projects/status/voelauhwvv1l8j2f)](https://ci.appveyor.com/project/chriseldredge/lucene-net-linq)
 
@@ -33,34 +33,7 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
   netstandard build is exercised at runtime on classic .NET Framework
   as well as modern .NET.
 
-#### Behaviour caveats
-
-A handful of subsystems shifted because the underlying Lucene API was
-removed or substantially reworked between 3.0.3 and 4.8:
-
-- **Document-level boost** was removed in Lucene 4.8 (only field-level
-  boost remains). The old `[DocumentBoost]` attribute and the document
-  boost read/write hooks have been deleted. Equivalent functionality
-  must be expressed as field-level boost or as a custom scoring query.
-- **Numeric-field boost** is dropped — Lucene 4.8 numeric fields don't
-  index norms, so per-field boost on `Int32Field`/`Int64Field`/etc. has
-  no effect. The `Boost` property on `[NumericField]` is accepted for
-  source compatibility but silently ignored at index time.
-- **Converter-based custom sort** is back, on a new code path. Properties
-  whose type implements `IComparable` / `IComparable<T>` and has a
-  `TypeConverter` (e.g. `System.Version`) sort correctly via
-  `GenericConvertableFieldComparatorSource` /
-  `NonGenericConvertableFieldComparatorSource`, which read field bytes
-  through `FieldCache.GetTerms`. Value-type properties (`int`, `bool`,
-  `DateTime`, nullables) cannot use this path because Lucene 4.8's
-  `FieldComparer<T>` constrains `T : class` — mark them `[NumericField]`
-  for true numeric ordering, otherwise they fall back to string sort.
-- **`MergePolicyBuilder`** is now a `Func<MergePolicy>` returning the
-  policy to install. Lucene 4.8 requires the merge policy to be set on
-  `IndexWriterConfig` *before* the writer is constructed, so the old
-  delegate signature that received the live `IndexWriter` no longer
-  fits.
-
+#### Features
 * Automatically converts PONOs to Documents and back
 * Add, delete and update documents in atomic transaction
 * Unit of Work pattern automatically tracks and flushes updated documents
@@ -588,3 +561,32 @@ value is not possible.
 
 If exact matching is required, these characters should be replaced
 with suitable substitutes that are not reserved by Lucene.
+
+#### 3.x => 4.x Changes
+
+A handful of subsystems shifted because the underlying Lucene API was
+removed or substantially reworked between 3.0.3 and 4.8:
+
+- **Document-level boost** was removed in Lucene 4.8 (only field-level
+  boost remains). The old `[DocumentBoost]` attribute and the document
+  boost read/write hooks have been deleted. Equivalent functionality
+  must be expressed as field-level boost or as a custom scoring query.
+- **Numeric-field boost** is dropped — Lucene 4.8 numeric fields don't
+  index norms, so per-field boost on `Int32Field`/`Int64Field`/etc. has
+  no effect. The `Boost` property on `[NumericField]` is accepted for
+  source compatibility but silently ignored at index time.
+- **Converter-based custom sort** is back, on a new code path. Properties
+  whose type implements `IComparable` / `IComparable<T>` and has a
+  `TypeConverter` (e.g. `System.Version`) sort correctly via
+  `GenericConvertableFieldComparatorSource` /
+  `NonGenericConvertableFieldComparatorSource`, which read field bytes
+  through `FieldCache.GetTerms`. Value-type properties (`int`, `bool`,
+  `DateTime`, nullables) cannot use this path because Lucene 4.8's
+  `FieldComparer<T>` constrains `T : class` — mark them `[NumericField]`
+  for true numeric ordering, otherwise they fall back to string sort.
+- **`MergePolicyBuilder`** is now a `Func<MergePolicy>` returning the
+  policy to install. Lucene 4.8 requires the merge policy to be set on
+  `IndexWriterConfig` *before* the writer is constructed, so the old
+  delegate signature that received the live `IndexWriter` no longer
+  fits.
+
