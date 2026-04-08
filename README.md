@@ -1,4 +1,4 @@
-## LINQ to Lucene.Net Modernized for Lucene.Net 4.8 and .NET 8
+## LINQ to Lucene Modernized for Lucene.Net 4.8 and .NET 8
 
 Iciclecreek.Lucene.Net.Linq is a .NET library that enables LINQ queries to run natively on a Lucene.Net index.
 
