@@ -1,4 +1,4 @@
-## LINQ to Lucene.Net
+## LINQ to Lucene.Net modern
 
 [![Build status](https://ci.appveyor.com/api/projects/status/voelauhwvv1l8j2f)](https://ci.appveyor.com/project/chriseldredge/lucene-net-linq)
 
