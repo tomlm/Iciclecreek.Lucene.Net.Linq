@@ -1,193 +1,52 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.30703</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{77AD18CC-93A3-4BC9-9F31-2C16D873F088}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- 1591: missing XML doc on public type/member. -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <RootNamespace>Lucene.Net.Linq</RootNamespace>
     <AssemblyName>Lucene.Net.Linq</AssemblyName>
-    <FileAlignment>512</FileAlignment>
+
+    <!-- Package metadata (moved from .nuspec) -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Lucene.Net.LinqX</PackageId>
+    <Version>4.8.0-beta00017</Version>
+    <Title>Lucene.Net.LinqX</Title>
+    <Authors>Chris Eldredge</Authors>
+    <Owners>The Motley Fool, LLC</Owners>
+    <Copyright>Copyright 2012-2014 The Motley Fool, LLC</Copyright>
+    <Description>Execute LINQ queries on Lucene.Net complete with object to Document mapping (.NET core and Lucene 4.X).</Description>
+    <PackageTags>lucene.net lucene linq odata search nosql</PackageTags>
+    <PackageProjectUrl>https://github.com/tomlm/Lucene.Net.LinqX</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReleaseNotes>See https://github.com/tomlm/Lucene.Net.LinqX/releases</PackageReleaseNotes>
+    <RepositoryUrl>https://github.com/tomlm/Lucene.Net.LinqX</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>True</IncludeSymbols>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>True</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>False</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin\Debug\Lucene.Net.Linq.xml</DocumentationFile>
-    <NoWarn>1591</NoWarn>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>True</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin\Release\Lucene.Net.Linq.xml</DocumentationFile>
-    <NoWarn>1591</NoWarn>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="Common.Logging, Version=2.3.1.0, Culture=neutral, PublicKeyToken=af08829b84f0328e, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\Common.Logging.2.3.1\lib\net40\Common.Logging.dll</HintPath>
-    </Reference>
-    <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>..\..\packages\SharpZipLib.1.3.3\lib\20\ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-    <Reference Include="Lucene.Net">
-      <HintPath>..\..\packages\Lucene.Net.3.0.3\lib\NET40\Lucene.Net.dll</HintPath>
-    </Reference>
-    <Reference Include="Remotion.Linq">
-      <HintPath>..\..\packages\Remotion.Linq.1.13.183.0\lib\net35\Remotion.Linq.dll</HintPath>
-    </Reference>
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\..\Readme.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="..\..\build\VersionInfo.cs" Condition="Exists('..\..\build\VersionInfo.cs')">
-      <Link>Properties\VersionInfo.cs</Link>
-    </Compile>
-    <Compile Include="Abstractions\IIndexWriter.cs" />
-    <Compile Include="Analysis\CaseInsensitiveKeywordAnalyzer.cs" />
-    <Compile Include="Analysis\PerFieldAnalyzer.cs" />
-    <Compile Include="AnalyzerExtensions.cs" />
-    <Compile Include="Clauses\ExpressionNodes\BoostExpressionNode.cs" />
-    <Compile Include="Clauses\BoostClause.cs" />
-    <Compile Include="Clauses\ExpressionNodes\QueryStatisticsCallbackExpressionNode.cs" />
-    <Compile Include="Clauses\ExpressionNodes\TrackRetrievedDocumentsExpressionNode.cs" />
-    <Compile Include="Clauses\Expressions\AllowSpecialCharactersExpression.cs" />
-    <Compile Include="Clauses\Expressions\BoostBinaryExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneCompositeOrderingExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneExpressionType.cs" />
-    <Compile Include="Clauses\Expressions\LuceneOrderByRelevanceExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneQueryAnyFieldExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneQueryExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneQueryFieldExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneQueryPredicateExpression.cs" />
-    <Compile Include="Clauses\Expressions\LuceneRangeQueryExpression.cs" />
-    <Compile Include="Clauses\ExtensionClause.cs" />
-    <Compile Include="Clauses\QueryStatisticsCallbackClause.cs" />
-    <Compile Include="Clauses\TrackRetrievedDocumentsClause.cs" />
-    <Compile Include="Clauses\TreeVisitors\LuceneExpressionTreeVisitor.cs" />
-    <Compile Include="FieldMappingQueryParser.cs" />
-    <Compile Include="Fluent\ClassMap.cs" />
-    <Compile Include="Fluent\DocumentKeyPart.cs" />
-    <Compile Include="Fluent\FluentDocumentMapper.cs" />
-    <Compile Include="Fluent\NumericPropertyMap.cs" />
-    <Compile Include="Fluent\PropertyMap.cs" />
-    <Compile Include="Fluent\TermVectorPart.cs" />
-    <Compile Include="IQueryExecutionContext.cs" />
-    <Compile Include="IRetrievedDocumentTracker.cs" />
-    <Compile Include="KeyConstraint.cs" />
-    <Compile Include="LuceneDataProviderSettings.cs" />
-    <Compile Include="LuceneQueryStatistics.cs" />
-    <Compile Include="Mapping\DocumentKey.cs" />
-    <Compile Include="Mapping\DocumentKeyFieldMapper.cs" />
-    <Compile Include="Mapping\DocumentMapperBase.cs" />
-    <Compile Include="Mapping\IDocumentFieldConverter.cs" />
-    <Compile Include="Mapping\IDocumentKeyConverter.cs" />
-    <Compile Include="Mapping\IDocumentMapper.cs" />
-    <Compile Include="Mapping\IDocumentModificationDetector.cs" />
-    <Compile Include="Mapping\IFieldMapper.cs" />
-    <Compile Include="Mapping\IFieldMappingInfo.cs" />
-    <Compile Include="Mapping\IFieldMappingInfoProvider.cs" />
-    <Compile Include="Mapping\ReflectionDocumentBoostMapper.cs" />
-    <Compile Include="Mapping\ReflectionScoreMapper.cs" />
-    <Compile Include="Mapping\TermFreqVectorDocumentMapper.cs" />
-    <Compile Include="Mapping\TermVectorMode.cs" />
-    <Compile Include="QueryExecutionContext.cs" />
-    <Compile Include="QueryExecutionPhase.cs" />
-    <Compile Include="ReadOnlyLuceneDataProvider.cs" />
-    <Compile Include="RelinqQueryParserFactory.cs" />
-    <Compile Include="ScalarResultHandlers\ScalarResultHandler.cs" />
-    <Compile Include="ScalarResultHandlers\ScalarResultHandlerRegistry.cs" />
-    <Compile Include="SearcherLoadEventArgs.cs" />
-    <Compile Include="Search\GenericConvertableFieldComparatorSource.cs" />
-    <Compile Include="Search\GenericFieldComparator.cs" />
-    <Compile Include="Search\NonGenericFieldComparator.cs" />
-    <Compile Include="Transformation\AllowSpecialCharactersExpressionTransformer.cs" />
-    <Compile Include="Context.cs" />
-    <Compile Include="Converters\DateTimeConverter.cs" />
-    <Compile Include="Converters\FormatConverter.cs" />
-    <Compile Include="ISession.cs" />
-    <Compile Include="LuceneDataProvider.cs" />
-    <Compile Include="LuceneMethods.cs" />
-    <Compile Include="LuceneQueryable.cs" />
-    <Compile Include="LuceneQueryExecutor.cs" />
-    <Compile Include="LuceneSession.cs" />
-    <Compile Include="Mapping\CollectionReflectionFieldMapper.cs" />
-    <Compile Include="Converters\DateTimeOffsetToTicksConverter.cs" />
-    <Compile Include="Converters\DateTimeToTicksConverter.cs" />
-    <Compile Include="Mapping\FieldAttribute.cs" />
-    <Compile Include="Mapping\IndexMode.cs" />
-    <Compile Include="Mapping\NumericFieldMappingInfoBuilder.cs" />
-    <Compile Include="Mapping\NumericReflectionFieldMapper.cs" />
-    <Compile Include="Mapping\ReflectionFieldMapper.cs" />
-    <Compile Include="Mapping\FieldMappingInfoBuilder.cs" />
-    <Compile Include="Mapping\ReflectionDocumentMapper.cs" />
-    <Compile Include="Mapping\StoreMode.cs" />
-    <Compile Include="Search\FieldComparator.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Search\Function\DelegatingCustomScoreQuery.cs" />
-    <Compile Include="Transformation\TreeVisitors\AllowSpecialCharactersMethodExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\BooleanBinaryToQueryPredicateExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\AggressiveSubQueryFromClauseFlattener.cs" />
-    <Compile Include="Transformation\TreeVisitors\FuzzyMethodCallTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\BoostMethodCallTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\ExternallyProvidedQueryExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\LuceneExtensionMethodCallTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\MethodInfoMatchingTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\NoOpConvertExpressionRemovingVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\RangeQueryMergeExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\SubQueryContainsTreeVisitor.cs" />
-    <Compile Include="ILuceneQueryModelVisitor.cs" />
-    <Compile Include="LuceneQueryModel.cs" />
-    <Compile Include="Translation\ResultOperatorHandlers\ResultOperatorHandler.cs" />
-    <Compile Include="Translation\ResultOperatorHandlers\ResultOperatorRegistry.cs" />
-    <Compile Include="Util\AnalyzerExtensions.cs" />
-    <Compile Include="Translation\ResultOperatorHandlers\AggregateResultOperatorHandlers.cs" />
-    <Compile Include="Util\ExpressionExtensions.cs" />
-    <Compile Include="Transformation\TreeVisitors\NoOpConditionRemovingTreeVisitor.cs" />
-    <Compile Include="Translation\TreeVisitors\QueryBuildingExpressionTreeVisitor.cs" />
-    <Compile Include="Search\NonGenericConvertableFieldComparatorSource.cs" />
-    <Compile Include="Search\QueryType.cs" />
-    <Compile Include="Transformation\QueryModelTransformer.cs" />
-    <Compile Include="Translation\QueryModelTranslator.cs" />
-    <Compile Include="Transformation\TreeVisitors\BinaryToQueryExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\CompareCallToBinaryExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\ConcatToCompositeOrderingExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\FlagToBinaryConditionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\MethodCallToBinaryExpressionTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\NoOpMethodCallRemovingTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\NullSafetyConditionRemovingTreeVisitor.cs" />
-    <Compile Include="Transformation\TreeVisitors\QuerySourceReferencePropertyTransformingTreeVisitor.cs" />
-    <Compile Include="Util\LinqExtensions.cs" />
-    <Compile Include="Util\Log.cs" />
-    <Compile Include="Util\MemberInfoUtils.cs" />
-    <Compile Include="Util\NumericUtils.cs" />
+    <PackageReference Include="Lucene.Net" />
+    <PackageReference Include="Lucene.Net.Analysis.Common" />
+    <PackageReference Include="Lucene.Net.Queries" />
+    <PackageReference Include="Lucene.Net.QueryParser" />
+    <PackageReference Include="Remotion.Linq" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
+
   <ItemGroup>
-    <None Include="Lucene.Net.Linq.nuspec">
-      <SubType>Designer</SubType>
-    </None>
-    <None Include="packages.config">
-      <SubType>Designer</SubType>
-    </None>
+    <InternalsVisibleTo Include="Lucene.Net.Linq.Tests" />
+    <!-- Required so Castle DynamicProxy (used by NSubstitute) can subclass
+         our internal types Context, ExpressionVisitor (compat shim), etc. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="readme.txt" />
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
 </Project>

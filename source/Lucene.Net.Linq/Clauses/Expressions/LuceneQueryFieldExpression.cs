@@ -1,35 +1,36 @@
 using System;
 using System.Linq.Expressions;
-using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
-    internal class LuceneQueryFieldExpression : ExtensionExpression
+    internal class LuceneQueryFieldExpression : Expression
     {
+        private readonly Type type;
         private readonly string fieldName;
 
         internal LuceneQueryFieldExpression(Type type, string fieldName)
-            : base(type, (ExpressionType)LuceneExpressionType.LuceneQueryFieldExpression)
         {
+            this.type = type;
             this.fieldName = fieldName;
-            Boost = 1;
+            FieldBoost = 1;
         }
 
-        internal LuceneQueryFieldExpression(Type type, ExpressionType expressionType, string fieldName)
-            : base(type, expressionType)
-        {
-            this.fieldName = fieldName;
-        }
+        public override ExpressionType NodeType => ExpressionType.Extension;
+        public override Type Type => type;
+        public override bool CanReduce => false;
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
             // no children.
             return this;
         }
 
         public string FieldName { get { return fieldName; } }
-        public float Boost { get; set; }
+
+        // Renamed from "Boost" to avoid C# overload-resolution collision
+        // with the LuceneMethods.Boost<T>(this T, float) extension method,
+        // which is in scope across the Lucene.Net.Linq namespace tree.
+        public float FieldBoost { get; set; }
 
         public bool Equals(LuceneQueryFieldExpression other)
         {
@@ -42,8 +43,8 @@ namespace Lucene.Net.Linq.Clauses.Expressions
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != typeof (LuceneQueryFieldExpression)) return false;
-            return Equals((LuceneQueryFieldExpression) obj);
+            if (obj.GetType() != typeof(LuceneQueryFieldExpression)) return false;
+            return Equals((LuceneQueryFieldExpression)obj);
         }
 
         public override int GetHashCode()
@@ -64,9 +65,9 @@ namespace Lucene.Net.Linq.Clauses.Expressions
         public override string ToString()
         {
             var s = "LuceneField(" + fieldName + ")";
-            if (Math.Abs(Boost - 1.0f) > 0.01f)
+            if (Math.Abs(FieldBoost - 1.0f) > 0.01f)
             {
-                return s + "^" + Boost;
+                return s + "^" + FieldBoost;
             }
             return s;
         }

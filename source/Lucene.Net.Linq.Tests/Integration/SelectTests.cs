@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
+using Lucene.Net.Analysis.Miscellaneous;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
 using NUnit.Framework;
@@ -10,11 +12,11 @@ namespace Lucene.Net.Linq.Tests.Integration
     [TestFixture]
     public class SelectTests : IntegrationTestBase
     {
-        private PerFieldAnalyzerWrapper analyzer;
+        private PerFieldAnalyzer analyzer;
 
-        protected override Analyzer GetAnalyzer(Net.Util.Version version)
+        protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
-            analyzer = new PerFieldAnalyzerWrapper(base.GetAnalyzer(version));
+            analyzer = new PerFieldAnalyzer(base.GetAnalyzer(version));
             analyzer.AddAnalyzer<SampleDocument>(t => t.Id, new KeywordAnalyzer());
             analyzer.AddAnalyzer<SampleDocument>(t => t.Key, new CaseInsensitiveKeywordAnalyzer());
             return analyzer;

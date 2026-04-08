@@ -3,17 +3,18 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
-using Common.Logging;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.ScalarResultHandlers;
 using Lucene.Net.Linq.Search.Function;
 using Lucene.Net.Linq.Transformation;
 using Lucene.Net.Linq.Translation;
+using Lucene.Net.Linq.Util;
 using Lucene.Net.Search;
+using Microsoft.Extensions.Logging;
 using Remotion.Linq;
 using Remotion.Linq.Clauses;
-using Remotion.Linq.Clauses.ExpressionTreeVisitors;
+using Remotion.Linq.Clauses.ExpressionVisitors;
 
 namespace Lucene.Net.Linq
 {
@@ -96,7 +97,7 @@ namespace Lucene.Net.Linq
 
     internal abstract class LuceneQueryExecutorBase<TDocument> : IQueryExecutor, IFieldMappingInfoProvider
     {
-        private readonly ILog Log = LogManager.GetLogger(typeof(LuceneQueryExecutorBase<>));
+        private readonly ILogger Log = Logging.CreateLogger(typeof(LuceneQueryExecutorBase<>));
 
         private readonly Context context;
         
@@ -118,7 +119,7 @@ namespace Lucene.Net.Linq
             {
                 var searcher = searcherHandle.Searcher;
                 var skipResults = luceneQueryModel.SkipResults;
-                var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.MaxDoc - skipResults);
+                var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.IndexReader.MaxDoc - skipResults);
 
                 var executionContext = new QueryExecutionContext(searcher, luceneQueryModel.Query, luceneQueryModel.Filter);
                 TopFieldDocs hits;
@@ -182,7 +183,7 @@ namespace Lucene.Net.Linq
 
             var mapping = new QuerySourceMapping();
             mapping.AddMapping(queryModel.MainFromClause, currentItemExpression);
-            queryModel.TransformExpressions(e => ReferenceReplacingExpressionTreeVisitor.ReplaceClauseReferences(e, mapping, throwOnUnmappedReferences: true));
+            queryModel.TransformExpressions(e => ReferenceReplacingExpressionVisitor.ReplaceClauseReferences(e, mapping, throwOnUnmappedReferences: true));
 
             var projection = GetProjector<T>(queryModel);
             var projector = projection.Compile();
@@ -193,7 +194,7 @@ namespace Lucene.Net.Linq
             {
                 var searcher = searcherHandle.Searcher;
                 var skipResults = luceneQueryModel.SkipResults;
-                var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.MaxDoc - skipResults);
+                var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.IndexReader.MaxDoc - skipResults);
                 var query = luceneQueryModel.Query;
 
                 var scoreFunction = luceneQueryModel.GetCustomScoreFunction<TDocument>();
@@ -207,7 +208,19 @@ namespace Lucene.Net.Linq
                 PrepareSearchSettings(executionContext);
 
                 var elapsedPreparationTime = watch.Elapsed;
-                var hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                // Lucene 4.8's IndexSearcher.Search throws ArgumentException
+                // when nDocs is 0 (TopFieldCollector.Create requires
+                // numHits > 0). Short-circuit on empty result sets so callers
+                // like Min/Max see an empty enumerable rather than a crash.
+                TopFieldDocs hits;
+                if (maxResults + skipResults <= 0)
+                {
+                    hits = new TopFieldDocs(0, new ScoreDoc[0], new SortField[0], 0);
+                }
+                else
+                {
+                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                }
                 var elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
 
                 executionContext.Phase = QueryExecutionPhase.ConvertResults;
@@ -246,7 +259,7 @@ namespace Lucene.Net.Linq
             luceneQueryModel.RaiseCaptureQueryStatistics(statistics);
         }
 
-        private IEnumerable<T> EnumerateHits<T>(TopDocs hits, QueryExecutionContext executionContext, Searchable searcher, IRetrievedDocumentTracker<TDocument> tracker, ItemHolder itemHolder, int skipResults, Func<TDocument, T> projector)
+        private IEnumerable<T> EnumerateHits<T>(TopDocs hits, QueryExecutionContext executionContext, IndexSearcher searcher, IRetrievedDocumentTracker<TDocument> tracker, ItemHolder itemHolder, int skipResults, Func<TDocument, T> projector)
         {
             for (var i = skipResults; i < hits.ScoreDocs.Length; i++)
             {
@@ -294,7 +307,7 @@ namespace Lucene.Net.Linq
             var builder = new QueryModelTranslator(this, context);
             builder.Build(queryModel);
             
-            Log.Debug(m => m("Lucene query: {0}", builder.Model));
+            Log.LogDebug("Lucene query: {Model}", builder.Model);
 
             return builder.Model;
         }

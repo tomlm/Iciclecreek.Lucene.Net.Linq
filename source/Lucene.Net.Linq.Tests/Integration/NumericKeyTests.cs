@@ -24,7 +24,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         public void SetUp()
         {
             directory = new RAMDirectory();
-            provider = new LuceneDataProvider(directory, Version.LUCENE_30);
+            provider = new LuceneDataProvider(directory, LuceneVersion.LUCENE_48);
         }
 
         [Test]

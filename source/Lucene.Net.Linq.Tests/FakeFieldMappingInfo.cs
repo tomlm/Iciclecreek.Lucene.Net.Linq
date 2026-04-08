@@ -5,7 +5,7 @@ using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
 using Lucene.Net.Search;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 
 namespace Lucene.Net.Linq.Tests
 {
@@ -30,7 +30,7 @@ namespace Lucene.Net.Linq.Tests
         
         public string EscapeSpecialCharacters(string value)
         {
-            return QueryParser.Escape(value ?? string.Empty);
+            return QueryParserBase.Escape(value ?? string.Empty);
         }
 
         public Query CreateQuery(string pattern)
@@ -40,7 +40,7 @@ namespace Lucene.Net.Linq.Tests
 
         public Query CreateRangeQuery(object lowerBound, object upperBound, RangeType lowerRange, RangeType upperRange)
         {
-            return new TermRangeQuery(FieldName,
+            return TermRangeQuery.NewStringRange(FieldName,
                 lowerBound != null ? lowerBound.ToString() : null,
                 upperBound != null ? upperBound.ToString() : null,
                 lowerRange == RangeType.Inclusive,

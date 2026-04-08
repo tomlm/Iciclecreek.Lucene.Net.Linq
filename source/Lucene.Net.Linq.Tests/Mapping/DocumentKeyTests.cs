@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Search;
+using NSubstitute;
 using NUnit.Framework;
-using Rhino.Mocks;
 
 namespace Lucene.Net.Linq.Tests.Mapping
 {
@@ -44,10 +44,10 @@ namespace Lucene.Net.Linq.Tests.Mapping
         public void ToQuery_ConvertsComplexTypes()
         {
             var customValue = new object();
-            var mapping = MockRepository.GenerateStub<IFieldMappingInfo>();
-            mapping.Expect(m => m.FieldName).Return("id");
-            mapping.Expect(m => m.ConvertToQueryExpression(customValue)).Return("custom*value*as*string");
-            mapping.Expect(m => m.CreateQuery("custom*value*as*string")).Return(new TermQuery(new Term("id", "custom*value*as*string")));
+            var mapping = Substitute.For<IFieldMappingInfo>();
+            mapping.FieldName.Returns("id");
+            mapping.ConvertToQueryExpression(customValue).Returns("custom*value*as*string");
+            mapping.CreateQuery("custom*value*as*string").Returns(new TermQuery(new Term("id", "custom*value*as*string")));
             var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { mapping, customValue } });
 
             var query = key.ToQuery();

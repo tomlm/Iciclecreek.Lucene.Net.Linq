@@ -1,8 +1,8 @@
 using System;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
+using Lucene.Net.Queries;
 using Lucene.Net.Search;
-using Lucene.Net.Search.Function;
 
 namespace Lucene.Net.Linq.Search.Function
 {
@@ -18,19 +18,21 @@ namespace Lucene.Net.Linq.Search.Function
             this.scoreFunction = scoreFunction;
         }
 
-        protected override CustomScoreProvider GetCustomScoreProvider(IndexReader reader)
+        protected override CustomScoreProvider GetCustomScoreProvider(AtomicReaderContext context)
         {
-            return new DelegatingScoreProvider(reader, convertFunction, scoreFunction);
+            return new DelegatingScoreProvider(context, convertFunction, scoreFunction);
         }
 
-        class DelegatingScoreProvider : CustomScoreProvider
+        private class DelegatingScoreProvider : CustomScoreProvider
         {
+            private readonly AtomicReaderContext context;
             private readonly Func<Document, T> convertFunction;
             private readonly Func<T, float> scoreFunction;
 
-            public DelegatingScoreProvider(IndexReader reader, Func<Document, T> convertFunction, Func<T, float> scoreFunction)
-                : base(reader)
+            public DelegatingScoreProvider(AtomicReaderContext context, Func<Document, T> convertFunction, Func<T, float> scoreFunction)
+                : base(context)
             {
+                this.context = context;
                 this.convertFunction = convertFunction;
                 this.scoreFunction = scoreFunction;
             }
@@ -38,8 +40,8 @@ namespace Lucene.Net.Linq.Search.Function
             public override float CustomScore(int doc, float subQueryScore, float valSrcScore)
             {
                 var val = base.CustomScore(doc, subQueryScore, valSrcScore);
-
-                return val * scoreFunction(convertFunction(reader.Document(doc)));
+                var document = context.AtomicReader.Document(doc);
+                return val * scoreFunction(convertFunction(document));
             }
         }
     }

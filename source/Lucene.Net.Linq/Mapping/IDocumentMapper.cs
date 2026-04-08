@@ -46,7 +46,7 @@ namespace Lucene.Net.Linq.Mapping
 
         /// <summary>
         /// Called before a search is executed to allow
-        /// customizations to be applied on the <see cref="Searcher"/>,
+        /// customizations to be applied on the <see cref="IndexSearcher"/>,
         /// <see cref="Query"/> and <see cref="Filter"/>.
         /// </summary>
         void PrepareSearchSettings(IQueryExecutionContext context);

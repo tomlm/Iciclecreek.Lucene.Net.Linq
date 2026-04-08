@@ -31,8 +31,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             mapper.CopyToDocument(this, doc);
 
-            Assert.That(doc.GetFieldable("CustomValueType").TokenStreamValue.ToString(), Is.EqualTo("(numeric,valSize=64,precisionStep=4)"));
-            Assert.That(doc.GetFieldable("CustomValueType").StringValue, Is.EqualTo(CustomValueType.TheValue.ToString()));
+            Assert.That(doc.GetField("CustomValueType").GetDoubleValue(), Is.EqualTo(CustomValueType.TheValue));
         }
 
         [Test]
@@ -43,7 +42,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
             var mapper = CreateMapper();
 
             var doc = new Document();
-            doc.Add(new Field("CustomValueType", value.ToString(), Field.Store.YES, Field.Index.NO));
+            doc.Add(new DoubleField("CustomValueType", value, Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 

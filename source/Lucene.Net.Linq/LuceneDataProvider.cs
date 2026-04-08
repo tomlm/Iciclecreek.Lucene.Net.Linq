@@ -1,17 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Common.Logging;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Abstractions;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
+using Lucene.Net.Linq.Util;
 using Lucene.Net.Search;
+using Microsoft.Extensions.Logging;
 using Lucene.Net.Store;
 using Remotion.Linq.Parsing.Structure;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq
 {
@@ -20,7 +22,7 @@ namespace Lucene.Net.Linq
     /// have public default constructors.
     /// </summary>
     /// <typeparam name="T">The type of object <see cref="Document"/>s will be mapped onto.</typeparam>
-    /// <returns>An instance of <paramref name="T"/></returns>
+    /// <returns>An instance of <typeparamref name="T"/></returns>
     public delegate T ObjectFactory<out T>();
 
     /// <summary>
@@ -29,7 +31,7 @@ namespace Lucene.Net.Linq
     /// </summary>
     /// <typeparam name="T">The type of object <see cref="Document"/>s will be mapped onto.</typeparam>
     /// <param name="key">A key that uniquely identifies the <see cref="Document"/>.</param>
-    /// <returns>An instance of <paramref name="T"/></returns>
+    /// <returns>An instance of <typeparamref name="T"/></returns>
     public delegate T ObjectLookup<out T>(IDocumentKey key);
 
     /// <summary>
@@ -38,7 +40,7 @@ namespace Lucene.Net.Linq
     /// </summary>
     public class LuceneDataProvider : IDisposable
     {
-        private static readonly ILog Log = LogManager.GetLogger<LuceneDataProvider>();
+        private static readonly ILogger Log = Logging.CreateLogger<LuceneDataProvider>();
 
         private readonly Directory directory;
         private readonly Analyzer externalAnalyzer;
@@ -122,25 +124,26 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// Create a <see cref="QueryParsers.QueryParser"/> suitable for parsing advanced queries
+        /// Create a <see cref="Lucene.Net.QueryParsers.Classic.QueryParser"/> suitable for parsing advanced queries
         /// that cannot not expressed as LINQ (e.g. queries submitted by a user).
         ///
-        /// After the instance is returned, options such as <see cref="QueryParsers.QueryParser.AllowLeadingWildcard"/>
-        /// and <see cref="QueryParsers.QueryParser.Field"/> can be customized to the clients needs.
+        /// After the instance is returned, options such as <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.AllowLeadingWildcard"/>
+        /// and <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.Field"/> can be customized to the clients needs.
         /// </summary>
         /// <typeparam name="T">The type of document that queries will be built against.</typeparam>
         public FieldMappingQueryParser<T> CreateQueryParser<T>()
         {
             var mapper = new ReflectionDocumentMapper<T>(version, externalAnalyzer);
-            return new FieldMappingQueryParser<T>(version, mapper) { DefaultSearchProperty = mapper.KeyProperties.FirstOrDefault() ?? mapper.IndexedProperties.FirstOrDefault()};
+            var defaultSearchField = mapper.KeyProperties.FirstOrDefault() ?? mapper.IndexedProperties.FirstOrDefault();
+            return new FieldMappingQueryParser<T>(version, defaultSearchField, mapper);
         }
 
         /// <summary>
-        /// Create a <see cref="QueryParsers.QueryParser"/> suitable for parsing advanced queries
+        /// Create a <see cref="Lucene.Net.QueryParsers.Classic.QueryParser"/> suitable for parsing advanced queries
         /// that cannot not expressed as LINQ (e.g. queries submitted by a user).
         ///
-        /// After the instance is returned, options such as <see cref="QueryParsers.QueryParser.AllowLeadingWildcard"/>
-        /// and <see cref="QueryParsers.QueryParser.Field"/> can be customized to the clients needs.
+        /// After the instance is returned, options such as <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.AllowLeadingWildcard"/>
+        /// and <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.Field"/> can be customized to the clients needs.
         /// </summary>
         /// <typeparam name="T">The type of document that queries will be built against.</typeparam>
         /// <param name="defaultSearchField">The default field for queries that don't specify which field to search.
@@ -215,7 +218,7 @@ namespace Lucene.Net.Linq
 
         /// <summary>
         /// Returns an enumeration of fields names that are indexed for a given object.
-        /// This may be useful in conjunction with <see cref="CreateQueryParser{T}"/> to
+        /// This may be useful in conjunction with <see cref="CreateQueryParser{T}()"/> to
         /// allow users to specify advanced custom queries.
         /// </summary>
         public IEnumerable<string> GetIndexedPropertyNames<T>()
@@ -376,13 +379,13 @@ namespace Lucene.Net.Linq
         {
             context.SearcherLoading += (s, e) =>
             {
-                Log.Trace(m => m("Invoking cache warming callback " + lookup));
+                Log.LogTrace("Invoking cache warming callback {Lookup}", lookup);
 
                 var warmupContext = new WarmUpContext(context, e.IndexSearcher);
                 var queryable = CreateQueryable(lookup, warmupContext, documentMapper);
                 callback(queryable);
 
-                Log.Trace(m => m("Callback {0} completed.", lookup));
+                Log.LogTrace("Callback {Lookup} completed.", lookup);
             };
         }
 
@@ -427,15 +430,27 @@ namespace Lucene.Net.Linq
 
         protected virtual IIndexWriter GetIndexWriter(Analyzer analyzer)
         {
-            var indexWriter = new IndexWriter(directory, analyzer, ShouldCreateIndex, DeletionPolicy, MaxFieldLength)
+            var config = new IndexWriterConfig(Version.LUCENE_48, analyzer)
             {
-                MergeFactor = Settings.MergeFactor
+                OpenMode = ShouldCreateIndex ? OpenMode.CREATE : OpenMode.APPEND,
+                IndexDeletionPolicy = DeletionPolicy,
+                RAMBufferSizeMB = Settings.RAMBufferSizeMB,
             };
-            indexWriter.SetRAMBufferSizeMB(Settings.RAMBufferSizeMB);
+
             if (Settings.MergePolicyBuilder != null)
             {
-                indexWriter.SetMergePolicy(Settings.MergePolicyBuilder(indexWriter));
+                config.MergePolicy = Settings.MergePolicyBuilder();
             }
+
+            var indexWriter = new IndexWriter(directory, config);
+
+            // In Lucene 4.8 a brand-new IndexWriter does not lay down any
+            // segments until the first document is added. DirectoryReader.Open
+            // then throws IndexNotFoundException because there is no
+            // segments_* file. Force an empty commit so readers can open
+            // the index immediately.
+            indexWriter.Commit();
+
             return new IndexWriterAdapter(indexWriter);
         }
 
@@ -447,8 +462,9 @@ namespace Lucene.Net.Linq
                 {
                     return !directory.ListAll().Any();
                 }
-                catch (NoSuchDirectoryException)
+                catch (Lucene.Net.Index.IndexNotFoundException)
                 {
+                    // Lucene 4.8 replaced NoSuchDirectoryException with this.
                     return true;
                 }
             }
@@ -457,11 +473,6 @@ namespace Lucene.Net.Linq
         protected virtual IndexDeletionPolicy DeletionPolicy
         {
             get { return Settings.DeletionPolicy; }
-        }
-
-        protected virtual IndexWriter.MaxFieldLength MaxFieldLength
-        {
-            get { return Settings.MaxFieldLength; }
         }
 
         private LuceneQueryable<T> CreateQueryable<T>(ObjectLookup<T> factory, Context context, IDocumentMapper<T> mapper)

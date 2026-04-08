@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Common.Logging;
 using Lucene.Net.Index;
+using Lucene.Net.Linq.Util;
+using Microsoft.Extensions.Logging;
 using Lucene.Net.Search;
 using Lucene.Net.Store;
 
@@ -10,7 +11,7 @@ namespace Lucene.Net.Linq
 {
     internal class Context : IDisposable
     {
-        private static readonly ILog Log = LogManager.GetLogger<Context>();
+        private static readonly ILogger Log = Logging.CreateLogger<Context>();
 
         public event EventHandler<SearcherLoadEventArgs> SearcherLoading;
 
@@ -42,7 +43,7 @@ namespace Lucene.Net.Linq
 
                 if (!tracker.TryDispose())
                 {
-                    Log.Warn(m => m("Context is being disposed before all handles were released."));
+                    Log.LogWarning("Context is being disposed before all handles were released.");
                 }
 
                 tracker = null;
@@ -72,7 +73,7 @@ namespace Lucene.Net.Linq
             lock (reloadLock)
             {
                 AssertNotDisposed();
-                Log.Info(m => m("Reloading index."));
+                Log.LogInformation("Reloading index.");
 
                 IndexSearcher searcher;
                 if (reader == null)
@@ -91,7 +92,7 @@ namespace Lucene.Net.Linq
 
                 if (tmpHandler != null)
                 {
-                    Log.Debug(m => m("Invoking SearcherLoading event."));
+                    Log.LogDebug("Invoking SearcherLoading event.");
                     tmpHandler(this, new SearcherLoadEventArgs(newTracker.Searcher));
                 }
 
@@ -106,7 +107,7 @@ namespace Lucene.Net.Linq
                 }
             }
 
-            Log.Debug(m => m("Index reloading completed."));
+            Log.LogDebug("Index reloading completed.");
         }
 
         internal SearcherClientTracker CurrentTracker
@@ -130,7 +131,25 @@ namespace Lucene.Net.Linq
 
         protected virtual IndexSearcher CreateSearcher()
         {
-            return new IndexSearcher(IndexReader.Open(directory, readOnly: true));
+            try
+            {
+                return new IndexSearcher(DirectoryReader.Open(directory));
+            }
+            catch (Lucene.Net.Index.IndexNotFoundException)
+            {
+                // Lucene 4.8 throws IndexNotFoundException when no segments
+                // file exists yet. Lay down an empty commit so the directory
+                // becomes openable, then retry. (Lucene 3 silently returned
+                // an empty reader in this case.)
+                using (var temp = new Lucene.Net.Index.IndexWriter(
+                    directory,
+                    new Lucene.Net.Index.IndexWriterConfig(global::Lucene.Net.Util.LuceneVersion.LUCENE_48,
+                        new Lucene.Net.Analysis.Core.KeywordAnalyzer())))
+                {
+                    temp.Commit();
+                }
+                return new IndexSearcher(DirectoryReader.Open(directory));
+            }
         }
 
         /// <summary>
@@ -141,13 +160,14 @@ namespace Lucene.Net.Linq
         protected virtual bool ReopenSearcher(out IndexSearcher searcher)
         {
             searcher = null;
-            var oldReader = reader;
-            reader = reader.Reopen();
-            if (ReferenceEquals(reader, oldReader))
+            var oldReader = (DirectoryReader)reader;
+            var newReader = DirectoryReader.OpenIfChanged(oldReader);
+            if (newReader == null)
             {
                 return false;
             }
-            searcher = new IndexSearcher(reader);
+            reader = newReader;
+            searcher = new IndexSearcher(newReader);
             return true;
         }
 
@@ -252,10 +272,10 @@ namespace Lucene.Net.Linq
                             undisposedTrackers.Remove(this);
                         }
 
-                        var reader = searcher.IndexReader;
-                        searcher.Dispose();
-                        // NB IndexSearcher.Dispose() does not Dispose externally provided IndexReader:
-                        reader.Dispose();
+                        // In Lucene 4.8 IndexSearcher itself is no longer
+                        // IDisposable; the underlying IndexReader holds the
+                        // resources and is what we close.
+                        searcher.IndexReader.Dispose();
 
                         disposed = true;
                     }

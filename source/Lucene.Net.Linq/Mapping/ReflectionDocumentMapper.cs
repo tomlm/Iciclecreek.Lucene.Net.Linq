@@ -5,7 +5,7 @@ using System.Reflection;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Util;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Mapping
 {

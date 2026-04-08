@@ -1,5 +1,7 @@
 ﻿using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
+using Lucene.Net.Linq.Analysis;
 using NUnit.Framework;
 using Version = System.Version;
 
@@ -16,9 +18,10 @@ namespace Lucene.Net.Linq.Tests.Integration
             AddDocument(new SampleDocument { Name = "b", Scalar = 2, Flag = true, Version = new Version(3, 0, 0) });
         }
 
-        protected override Analyzer GetAnalyzer(Net.Util.Version version)
+        protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
-            var a = new PerFieldAnalyzerWrapper(base.GetAnalyzer(version));
+            // Stage 5 port: see AllowSpecialCharactersTests.GetAnalyzer.
+            var a = new PerFieldAnalyzer(base.GetAnalyzer(version));
             a.AddAnalyzer("Version", new KeywordAnalyzer());
             a.AddAnalyzer("Flag", new KeywordAnalyzer());
             return a;
@@ -52,6 +55,23 @@ namespace Lucene.Net.Linq.Tests.Integration
             var result = from d in documents orderby d.Scalar select d.Scalar;
 
             Assert.That(result.ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
+        }
+
+        [Test]
+        public void OrderBy_Int_MultiDigit()
+        {
+            writer.DeleteAll();
+
+            AddDocument(new SampleDocument { Scalar = 2 });
+            AddDocument(new SampleDocument { Scalar = 10 });
+            AddDocument(new SampleDocument { Scalar = 1 });
+            AddDocument(new SampleDocument { Scalar = 20 });
+
+            var documents = provider.AsQueryable<SampleDocument>();
+
+            var result = from d in documents orderby d.Scalar select d.Scalar;
+
+            Assert.That(result.ToArray(), Is.EqualTo(new[] { 1, 2, 10, 20 }));
         }
 
         [Test]

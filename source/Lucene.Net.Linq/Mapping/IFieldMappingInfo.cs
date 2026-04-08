@@ -39,7 +39,7 @@ namespace Lucene.Net.Linq.Mapping
         /// <summary>
         /// Creates a query based on the supplied pattern.
         /// The pattern should be analyzed and parsed
-        /// (typically by using a <see cref="QueryParser"/>)
+        /// (typically by using a <see cref="Lucene.Net.QueryParsers.Classic.QueryParser"/>)
         /// to analyze the pattern and create
         /// <see cref="WildcardQuery"/>, <see cref="PhraseQuery"/>
         /// or <see cref="TermQuery"/> as needed.

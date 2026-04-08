@@ -36,7 +36,7 @@ namespace Lucene.Net.Linq
         
         /// <summary>
         /// The Query (generally a complex <see cref="BooleanQuery"/> or <see cref="MatchAllDocsQuery"/>)
-        /// that was executed on <see cref="Searcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
+        /// that was executed on <see cref="Lucene.Net.Search.IndexSearcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
         /// </summary>
         public Query Query
         {
@@ -45,7 +45,7 @@ namespace Lucene.Net.Linq
 
         /// <summary>
         /// The Filter (null when <see cref="LuceneDataProviderSettings.EnableMultipleEntities"/> is false)
-        /// that was executed on <see cref="Searcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
+        /// that was executed on <see cref="Lucene.Net.Search.IndexSearcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
         /// </summary>
         public Filter Filter
         {
@@ -53,7 +53,7 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// The Sort that was executed on <see cref="Searcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
+        /// The Sort that was executed on <see cref="Lucene.Net.Search.IndexSearcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
         /// </summary>
         public Sort Sort
         {
@@ -69,7 +69,7 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// Returns the total amount of time spent in <see cref="Searcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
+        /// Returns the total amount of time spent in <see cref="Lucene.Net.Search.IndexSearcher.Search(Lucene.Net.Search.Query,Lucene.Net.Search.Filter,int,Lucene.Net.Search.Sort)"/>
         /// </summary>
         public TimeSpan ElapsedSearchTime
         {
@@ -103,7 +103,7 @@ namespace Lucene.Net.Linq
 
         /// <summary>
         /// Returns the number of hits that were retrieved. This will generally be the lesser
-        /// of total hits or limit imposed by <see cref="Enumerable.Take{TSource}"/>.
+        /// of total hits or limit imposed by <see cref="System.Linq.Enumerable.Take{TSource}(System.Collections.Generic.IEnumerable{TSource},int)"/>.
         /// </summary>
         public int RetrievedDocuments
         {

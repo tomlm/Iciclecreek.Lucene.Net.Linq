@@ -8,7 +8,7 @@ namespace Lucene.Net.Linq.Mapping
 {
     internal static class NumericFieldMappingInfoBuilder
     {
-        internal static ReflectionFieldMapper<T> BuildNumeric<T>(PropertyInfo p, Type type, NumericFieldAttribute metadata)
+        internal static ReflectionFieldMapper<T> BuildNumeric<T>(PropertyInfo p, Type type, NumericFieldAttribute metadata, bool isCollection)
         {
             var fieldName = metadata.Field ?? p.Name;
             var typeToValueTypeConverter = GetComplexTypeToScalarConverter(type, metadata);
@@ -23,8 +23,11 @@ namespace Lucene.Net.Linq.Mapping
                 valueTypeToStringConverter = FieldMappingInfoBuilder.GetConverter(p, type, null);
             }
 
+            // Collections silently downgrade DV — see BaseFieldAttribute.DocValues docs.
+            var docValues = !isCollection && metadata.DocValues;
+
             return new NumericReflectionFieldMapper<T>(p, metadata.Store, typeToValueTypeConverter, valueTypeToStringConverter, fieldName,
-                                                       metadata.PrecisionStep, metadata.Boost);
+                                                       metadata.PrecisionStep, metadata.Boost, docValues);
         }
 
         private static TypeConverter GetComplexTypeToScalarConverter(Type type, NumericFieldAttribute metadata)

@@ -2,8 +2,8 @@ using System;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Store;
+using NSubstitute;
 using NUnit.Framework;
-using Rhino.Mocks;
 
 namespace Lucene.Net.Linq.Tests
 {
@@ -21,7 +21,7 @@ namespace Lucene.Net.Linq.Tests
         {
             record = new Record();
             document = new Document();
-            mapper = new MockRepository().StrictMock<IDocumentMapper<Record>>();
+            mapper = Substitute.For<IDocumentMapper<Record>>();
             executor = new TestableLuceneQueryExecutor<Record>(new Context(new RAMDirectory(), new object()), _ => record, mapper);
             context = new QueryExecutionContext();
         }
@@ -33,53 +33,46 @@ namespace Lucene.Net.Linq.Tests
             var record = new Record();
             ObjectLookup<Record> lookup = k => { capturedKey = k; return record; };
 
-            var enhancedMapper = MockRepository.GenerateStrictMock<IDocumentMapperWithConverter>();
+            var enhancedMapper = Substitute.For<IDocumentMapperWithConverter>();
             executor = new TestableLuceneQueryExecutor<Record>(new Context(new RAMDirectory(), new object()), lookup, enhancedMapper);
 
             var key = new DocumentKey();
-            enhancedMapper.Expect(m => m.ToKey(document)).Return(key);
-            enhancedMapper.Expect(m => m.ToObject(document, context, record));
+            enhancedMapper.ToKey(document).Returns(key);
 
             var result = executor.ConvertDocument(document, context);
 
             Assert.That(capturedKey, Is.SameAs(key), "Captured Key");
             Assert.That(result, Is.SameAs(record), "Record");
 
-            enhancedMapper.VerifyAllExpectations();
+            enhancedMapper.Received().ToObject(document, context, record);
         }
 
         [Test]
         public void GetDocumentKey_ConvertToObjectThenToKey()
         {
             var key = new DocumentKey();
-            
-            mapper.Expect(m => m.ToObject(document, context, record));
-            mapper.Expect(m => m.ToKey(record)).Return(key);
 
-            mapper.Replay();
-            
+            mapper.ToKey(record).Returns(key);
+
             var result = executor.GetDocumentKey(document, context);
 
             Assert.That(result, Is.SameAs(key));
-            mapper.VerifyAllExpectations();
+            mapper.Received().ToObject(document, context, record);
         }
 
         [Test]
         public void GetDocumentKey_GetKeyDirectlyWhenSupported()
         {
-            var enhancedMapper = MockRepository.GenerateStrictMock<IDocumentMapperWithConverter>();
+            var enhancedMapper = Substitute.For<IDocumentMapperWithConverter>();
             executor = new TestableLuceneQueryExecutor<Record>(new Context(new RAMDirectory(), new object()), _ => record, enhancedMapper);
 
             var key = new DocumentKey();
-            
-            enhancedMapper.Expect(m => m.ToKey(document)).Return(key);
 
-            enhancedMapper.Replay();
+            enhancedMapper.ToKey(document).Returns(key);
 
             var result = executor.GetDocumentKey(document, context);
 
             Assert.That(result, Is.SameAs(key));
-            enhancedMapper.VerifyAllExpectations();
         }
 
         class TestableLuceneQueryExecutor<T> : LuceneQueryExecutor<T>

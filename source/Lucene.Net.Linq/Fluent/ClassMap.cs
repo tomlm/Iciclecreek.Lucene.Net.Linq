@@ -5,7 +5,7 @@ using System.Reflection;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Search;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Fluent
 {
@@ -17,10 +17,9 @@ namespace Lucene.Net.Linq.Fluent
     public class ClassMap<T>
     {
         private readonly Version version;
-        private readonly ISet<PropertyMap<T>> properties = new HashSet<PropertyMap<T>>(new PartComparer<T>());
+        private readonly ISet<PropertyMap<T>> properties = new HashSet<PropertyMap<T>>(new PartComparer());
         private readonly IDictionary<string, string> documentKeys = new Dictionary<string, string>(StringComparer.Ordinal);
         private ReflectionScoreMapper<T> scoreMapper;
-        private ReflectionDocumentBoostMapper<T> docBoostMapper;
 
         public ClassMap(Version version)
         {
@@ -63,16 +62,6 @@ namespace Lucene.Net.Linq.Fluent
             properties.Add(part);
 
             return part;
-        }
-
-        /// <summary>
-        /// Defines a property that is used to set the document boost.
-        /// </summary>
-        public void DocumentBoost(Expression<Func<T, float>> expression)
-        {
-            var propInfo = GetMemberInfo<PropertyInfo>(expression.Body);
-
-            docBoostMapper = new ReflectionDocumentBoostMapper<T>(propInfo);
         }
 
         /// <summary>
@@ -133,11 +122,6 @@ namespace Lucene.Net.Linq.Fluent
                 docMapper.AddField(scoreMapper);
             }
 
-            if (docBoostMapper != null)
-            {
-                docMapper.AddField(docBoostMapper);
-            }
-            
             return docMapper;
         }
 
@@ -175,10 +159,9 @@ namespace Lucene.Net.Linq.Fluent
 
         /// <summary>
         /// Ensures ISet contains unique <see cref="PropertyMap{T}"/>s by
-        /// PropertyName.
+        /// PropertyName. Uses the enclosing ClassMap's type parameter <c>T</c>.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        internal class PartComparer<T> : IEqualityComparer<PropertyMap<T>>
+        internal class PartComparer : IEqualityComparer<PropertyMap<T>>
         {
             public bool Equals(PropertyMap<T> x, PropertyMap<T> y)
             {

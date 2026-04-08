@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
     {
         public static readonly MethodInfo[] SupportedMethods = new[]
             {
-                GetSupportedMethod (() => LuceneMethods.BoostInternal<object> (null, null))
+                Lucene.Net.Linq.Util.Reflection.MethodOf(() => LuceneMethods.BoostInternal<object>(null, null))
             };
 
         private readonly LambdaExpression boostFunction;
@@ -24,10 +24,9 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
             return Source.Resolve(inputParameter, expressionToBeResolved, clauseGenerationContext);
         }
 
-        protected override QueryModel ApplyNodeSpecificSemantics(QueryModel queryModel, ClauseGenerationContext clauseGenerationContext)
+        protected override void ApplyNodeSpecificSemantics(QueryModel queryModel, ClauseGenerationContext clauseGenerationContext)
         {
             queryModel.BodyClauses.Add(new BoostClause(boostFunction));
-            return queryModel;
         }
     }
 }

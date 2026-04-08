@@ -10,7 +10,7 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
     {
         public static readonly MethodInfo[] SupportedMethods =
         {
-            GetSupportedMethod (() => LuceneMethods.CaptureStatistics<object>(null, null))
+            Lucene.Net.Linq.Util.Reflection.MethodOf(() => LuceneMethods.CaptureStatistics<object>(null, null))
         };
 
         private readonly ConstantExpression callback;
@@ -26,10 +26,9 @@ namespace Lucene.Net.Linq.Clauses.ExpressionNodes
             return Source.Resolve(inputParameter, expressionToBeResolved, clauseGenerationContext);
         }
 
-        protected override QueryModel ApplyNodeSpecificSemantics(QueryModel queryModel, ClauseGenerationContext clauseGenerationContext)
+        protected override void ApplyNodeSpecificSemantics(QueryModel queryModel, ClauseGenerationContext clauseGenerationContext)
         {
             queryModel.BodyClauses.Add(new QueryStatisticsCallbackClause(callback));
-            return queryModel;
         }
     }
 }

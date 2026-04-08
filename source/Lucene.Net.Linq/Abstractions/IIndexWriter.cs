@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Search;
@@ -6,73 +6,52 @@ using Lucene.Net.Search;
 namespace Lucene.Net.Linq.Abstractions
 {
     /// <summary>
-    /// Abstraction of IndexWriter to faciliate unit testing.
+    /// Abstraction of <see cref="IndexWriter"/> to facilitate unit testing.
     /// </summary>
-    /// <see cref="Lucene.Net.Index.IndexWriter"/>
     public interface IIndexWriter : IDisposable
     {
-        /// <see cref="IndexWriter.AddDocument(Lucene.Net.Documents.Document)"/>
         void AddDocument(Document doc);
-
-        /// <see cref="IndexWriter.DeleteDocuments(Lucene.Net.Search.Query[])"/>
         void DeleteDocuments(Query[] queries);
-
-        /// <see cref="IndexWriter.DeleteAll"/>
         void DeleteAll();
-
-        /// <see cref="IndexWriter.Commit()"/>
         void Commit();
-
-        /// <see cref="IndexWriter.Rollback"/>
         void Rollback();
 
-        /// <see cref="IndexWriter.Optimize()"/>
-        void Optimize();
-
-        /// <see cref="IndexWriter.GetReader()"/>
-        IndexReader GetReader();
+        /// <summary>
+        /// Forces a merge to a single segment. Replaces the Lucene 3.x
+        /// <c>Optimize()</c> call.
+        /// </summary>
+        void ForceMerge(int maxNumSegments);
 
         /// <summary>
-        /// Gets a value indicating whether this instance has been closed either
-        /// by <see cref="Dispose"/> or <see cref="Rollback"/> being called.
+        /// Returns a near-real-time reader over the writer's current state.
         /// </summary>
-        /// <value><c>true</c> if this instance is closed; otherwise, <c>false</c>.</value>
+        DirectoryReader GetReader();
+
+        /// <summary>
+        /// Whether the writer has been closed by <see cref="System.IDisposable.Dispose"/>
+        /// or <see cref="Rollback"/>.
+        /// </summary>
         bool IsClosed { get; }
     }
 
     /// <summary>
-    /// Wraps an IndexWriter with an implementation of <c cref="IIndexWriter"/>.
+    /// Wraps an <see cref="IndexWriter"/> with an implementation of
+    /// <see cref="IIndexWriter"/>.
     /// </summary>
     public class IndexWriterAdapter : IIndexWriter
     {
         private readonly IndexWriter target;
         private bool closed;
 
-        /// <param name="target">The IndexWriter instance to delegate method calls to.</param>
         public IndexWriterAdapter(IndexWriter target)
         {
             this.target = target;
         }
 
-        public void DeleteAll()
-        {
-            target.DeleteAll();
-        }
-
-        public void DeleteDocuments(Query[] queries)
-        {
-            target.DeleteDocuments(queries);
-        }
-
-        public void Commit()
-        {
-            target.Commit();
-        }
-
-        public void AddDocument(Document doc)
-        {
-            target.AddDocument(doc);
-        }
+        public void DeleteAll() => target.DeleteAll();
+        public void DeleteDocuments(Query[] queries) => target.DeleteDocuments(queries);
+        public void Commit() => target.Commit();
+        public void AddDocument(Document doc) => target.AddDocument(doc);
 
         public void Dispose()
         {
@@ -80,10 +59,7 @@ namespace Lucene.Net.Linq.Abstractions
             target.Dispose();
         }
 
-        public void Optimize()
-        {
-            target.Optimize();
-        }
+        public void ForceMerge(int maxNumSegments) => target.ForceMerge(maxNumSegments);
 
         public void Rollback()
         {
@@ -91,11 +67,8 @@ namespace Lucene.Net.Linq.Abstractions
             target.Rollback();
         }
 
-        public IndexReader GetReader()
-        {
-            return target.GetReader();
-        }
+        public DirectoryReader GetReader() => DirectoryReader.Open(target, applyAllDeletes: true);
 
-        public bool IsClosed { get { return closed; } }
+        public bool IsClosed => closed;
     }
 }

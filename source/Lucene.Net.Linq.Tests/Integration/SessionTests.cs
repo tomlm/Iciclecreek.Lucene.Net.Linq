@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Tests.Integration
     [TestFixture]
     public class SessionTests : IntegrationTestBase
     {
-        protected override Analyzer GetAnalyzer(Net.Util.Version version)
+        protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
             return new CaseInsensitiveKeywordAnalyzer();
         }

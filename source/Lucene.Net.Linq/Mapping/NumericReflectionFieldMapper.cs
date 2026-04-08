@@ -1,13 +1,14 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
-using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 
 namespace Lucene.Net.Linq.Mapping
@@ -20,7 +21,12 @@ namespace Lucene.Net.Linq.Mapping
         private readonly int precisionStep;
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost)
-            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, false, new KeywordAnalyzer(), boost)
+            : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues: false)
+        {
+        }
+
+        public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues)
+            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues)
         {
             this.typeToValueTypeConverter = typeToValueTypeConverter;
             this.precisionStep = precisionStep;
@@ -40,16 +46,38 @@ namespace Lucene.Net.Linq.Mapping
                 targetType = GetUnderlyingValueType();
             }
 
-            return new SortField(FieldName, targetType.ToSortField(), reverse);
+            return new SortField(FieldName, targetType.ToSortFieldType(), reverse);
         }
 
-        protected internal override object ConvertFieldValue(IFieldable field)
+        protected internal override object ConvertFieldValue(IIndexableField field)
         {
-            var value = base.ConvertFieldValue(field);
+            object value;
+
+            // Numeric typed fields expose strongly-typed accessors; we use
+            // those rather than GetNumericValue() because in Lucene.Net 4.8
+            // the latter returns a boxed J2N.Numerics.Int64/Int32/Single/Double
+            // wrapper that does NOT cast directly to System.Int64/etc. The
+            // typed accessors return BCL primitives.
+            switch (field.NumericType)
+            {
+                case NumericFieldType.INT64:  value = field.GetInt64Value(); break;
+                case NumericFieldType.INT32:  value = field.GetInt32Value(); break;
+                case NumericFieldType.DOUBLE: value = field.GetDoubleValue(); break;
+                case NumericFieldType.SINGLE: value = field.GetSingleValue(); break;
+                case NumericFieldType.NONE:
+                default:                      value = field.GetStringValue(); break;
+            }
 
             if (typeToValueTypeConverter != null)
             {
                 value = typeToValueTypeConverter.ConvertFrom(value);
+            }
+            else if (value is string s)
+            {
+                // Field was stored via the legacy string code path; coerce
+                // back to the underlying property type.
+                var propType = propertyInfo.PropertyType.GetUnderlyingType();
+                value = Convert.ChangeType(s, propType);
             }
 
             return value;
@@ -65,23 +93,44 @@ namespace Lucene.Net.Linq.Mapping
 
             value = ConvertToSupportedValueType(value);
 
-            var numericField = new NumericField(fieldName, precisionStep, FieldStore, true);
-            numericField.SetValue((ValueType)value);
+            // Coerce enums to their underlying integral primitive so the
+            // switch below picks up the right typed-field constructor.
+            if (value != null && value.GetType().IsEnum)
+            {
+                value = Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()));
+            }
 
-            SetBoostIfNotDefault(numericField);
+            var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
+            Field numericField;
 
+            Field dvField = null;
+            switch (value)
+            {
+                case int i:
+                    numericField = new Int32Field(fieldName, i, fieldStore);
+                    if (docValues) dvField = new NumericDocValuesField(fieldName, i);
+                    break;
+                case long l:
+                    numericField = new Int64Field(fieldName, l, fieldStore);
+                    if (docValues) dvField = new NumericDocValuesField(fieldName, l);
+                    break;
+                case float f:
+                    numericField = new SingleField(fieldName, f, fieldStore);
+                    if (docValues) dvField = new SingleDocValuesField(fieldName, f);
+                    break;
+                case double d:
+                    numericField = new DoubleField(fieldName, d, fieldStore);
+                    if (docValues) dvField = new DoubleDocValuesField(fieldName, d);
+                    break;
+                default:
+                    throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as a numeric field.", nameof(source));
+            }
+
+            // In Lucene 4.8 boost on numeric fields is no longer supported
+            // (norms are required for boost, and numeric fields don't index
+            // norms). Boost is silently dropped if not the default.
             target.Add(numericField);
-        }
-
-        private void SetBoostIfNotDefault(NumericField numericField)
-        {
-            const float threshold = 0.002f;
-            var diff = Math.Abs(Boost - 1.0f);
-            
-            if (diff < threshold) return;
-
-            numericField.ForceDisableOmitNorms();
-            numericField.Boost = Boost;
+            if (dvField != null) target.Add(dvField);
         }
 
         public override string ConvertToQueryExpression(object value)
@@ -103,7 +152,7 @@ namespace Lucene.Net.Linq.Mapping
             {
                 return base.CreateQuery(pattern);
             }
-            
+
             return new TermQuery(new Term(FieldName, pattern));
         }
 

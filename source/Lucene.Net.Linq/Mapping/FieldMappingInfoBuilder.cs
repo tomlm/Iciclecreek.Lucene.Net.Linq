@@ -3,12 +3,13 @@ using System.Collections;
 using System.ComponentModel;
 using System.Reflection;
 using Lucene.Net.Analysis;
-using Lucene.Net.Analysis.Standard;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Linq.Analysis;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Linq.Converters;
 using Lucene.Net.Linq.Util;
 using DateTimeConverter = Lucene.Net.Linq.Converters.DateTimeConverter;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Mapping
 {
@@ -18,18 +19,11 @@ namespace Lucene.Net.Linq.Mapping
 
         internal static IFieldMapper<T> Build<T>(PropertyInfo p)
         {
-            return Build<T>(p, Version.LUCENE_30, null);
+            return Build<T>(p, Version.LUCENE_48, null);
         }
 
         internal static IFieldMapper<T> Build<T>(PropertyInfo p, Version version, Analyzer externalAnalyzer)
         {
-            var boost = p.GetCustomAttribute<DocumentBoostAttribute>(true);
-
-            if (boost != null)
-            {
-                return new ReflectionDocumentBoostMapper<T>(p);
-            }
-
             var score = p.GetCustomAttribute<QueryScoreAttribute>(true);
 
             if (score != null)
@@ -47,11 +41,11 @@ namespace Lucene.Net.Linq.Mapping
 
             if (numericFieldAttribute != null)
             {
-                mapper = NumericFieldMappingInfoBuilder.BuildNumeric<T>(p, type, numericFieldAttribute);
+                mapper = NumericFieldMappingInfoBuilder.BuildNumeric<T>(p, type, numericFieldAttribute, isCollection);
             }
             else
             {
-                mapper = BuildPrimitive<T>(p, type, metadata, version, externalAnalyzer);
+                mapper = BuildPrimitive<T>(p, type, metadata, version, externalAnalyzer, isCollection);
             }
 
             return isCollection ? new CollectionReflectionFieldMapper<T>(mapper, type) : mapper;
@@ -70,7 +64,7 @@ namespace Lucene.Net.Linq.Mapping
             return false;
         }
 
-        private static ReflectionFieldMapper<T> BuildPrimitive<T>(PropertyInfo p, Type type, FieldAttribute metadata, Version version, Analyzer externalAnalyzer)
+        private static ReflectionFieldMapper<T> BuildPrimitive<T>(PropertyInfo p, Type type, FieldAttribute metadata, Version version, Analyzer externalAnalyzer, bool isCollection)
         {
             var fieldName = (metadata != null ? metadata.Field : null) ?? p.Name;
             var converter = GetConverter(p, type, metadata);
@@ -78,12 +72,17 @@ namespace Lucene.Net.Linq.Mapping
             var index = metadata != null ? metadata.IndexMode : IndexMode.Analyzed;
             var termVectorMode = metadata != null ? metadata.TermVector : TermVectorMode.No;
             var boost = metadata != null ? metadata.Boost : 1.0f;
-            var defaultParserOperator = metadata != null ? metadata.DefaultParserOperator : QueryParsers.QueryParser.Operator.OR;
+            var defaultParserOperator = metadata != null ? metadata.DefaultParserOperator : Operator.OR;
             var caseSensitive = GetCaseSensitivity(metadata, converter);
             var analyzer = externalAnalyzer ?? BuildAnalyzer(metadata, converter, version);
             var nativeSort = metadata != null && metadata.NativeSort;
+            // Collections are silently downgraded: SortedNumericDocValuesField
+            // is not in Lucene.Net 4.8.0-beta00017 and SortedSetDocValuesField
+            // doesn't fit single-value LINQ ordering. Documented on
+            // BaseFieldAttribute.DocValues.
+            var docValues = !isCollection && metadata != null && metadata.DocValues;
 
-            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort);
+            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues);
         }
 
         internal static Analyzer BuildAnalyzer(FieldAttribute metadata, TypeConverter converter, Version version)
@@ -150,20 +149,18 @@ namespace Lucene.Net.Linq.Mapping
             }
 
             var versionCtr = analyzer.GetConstructor(new[] { typeof(Version) });
-
             if (versionCtr != null)
             {
                 return (Analyzer)versionCtr.Invoke(new object[] { version });
             }
 
             var defaultCtr = analyzer.GetConstructor(new Type[0]);
-
             if (defaultCtr != null)
             {
                 return (Analyzer)defaultCtr.Invoke(null);
             }
 
-            throw new InvalidOperationException("The analyzer type " + analyzer + " must have a public default constructor or public constructor that accepts " + typeof(Version));
+            throw new InvalidOperationException("The analyzer type " + analyzer + " must have a public default constructor or one accepting " + typeof(Version));
         }
     }
 }

@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Remotion.Linq;
-using Remotion.Linq.Parsing.ExpressionTreeVisitors.Transformation;
+using Remotion.Linq.Parsing.ExpressionVisitors.Transformation;
 
 namespace Lucene.Net.Linq.Transformation
 {
@@ -9,7 +9,7 @@ namespace Lucene.Net.Linq.Transformation
     {
         public Expression Transform(MethodCallExpression expression)
         {
-            if (expression.Method.Name != ReflectionUtility.GetMethod(() => LuceneMethods.AllowSpecialCharacters<object>(null)).Name)
+            if (expression.Method.Name != Lucene.Net.Linq.Util.Reflection.MethodOf(() => LuceneMethods.AllowSpecialCharacters<object>(null)).Name)
             {
                 return expression;
             }

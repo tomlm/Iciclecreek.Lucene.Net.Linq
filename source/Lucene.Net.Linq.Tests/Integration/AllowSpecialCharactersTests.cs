@@ -1,5 +1,6 @@
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Linq.Analysis;
 using NUnit.Framework;
 
@@ -8,9 +9,13 @@ namespace Lucene.Net.Linq.Tests.Integration
     [TestFixture]
     public class AllowSpecialCharactersTests : IntegrationTestBase
     {
-        protected override Analyzer GetAnalyzer(Net.Util.Version version)
+        protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
-            var analyzer = new PerFieldAnalyzerWrapper(base.GetAnalyzer(version));
+            // Stage 5 port: the BCL PerFieldAnalyzerWrapper's AddAnalyzer
+            // method was removed in 4.8 (analyzers must now be passed via
+            // the ctor map). Use our PerFieldAnalyzer which preserves the
+            // AddAnalyzer surface and is built on AnalyzerWrapper.
+            var analyzer = new PerFieldAnalyzer(base.GetAnalyzer(version));
             analyzer.AddAnalyzer("Path", new CaseInsensitiveKeywordAnalyzer());
             analyzer.AddAnalyzer("Key", new KeywordAnalyzer());
             return analyzer;

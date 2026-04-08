@@ -7,7 +7,8 @@ using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Store;
 using NUnit.Framework;
 using Directory = Lucene.Net.Store.Directory;
-using Version = Lucene.Net.Util.Version;
+using LuceneVersion = Lucene.Net.Util.LuceneVersion;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Tests.Integration
 {
@@ -16,15 +17,16 @@ namespace Lucene.Net.Linq.Tests.Integration
         protected LuceneDataProvider provider;
         protected Directory directory;
         protected IndexWriter writer;
-        protected static readonly Version version = Version.LUCENE_29;
+        protected static readonly Version version = Version.LUCENE_48;
 
         [SetUp]
         public virtual void InitializeLucene()
         {
             directory = new RAMDirectory();
-            writer = new IndexWriter(directory, GetAnalyzer(version), IndexWriter.MaxFieldLength.UNLIMITED);
-            
-            provider = new LuceneDataProvider(directory, writer.Analyzer, version, writer);
+            var analyzer = GetAnalyzer(version);
+            writer = new IndexWriter(directory, new IndexWriterConfig(LuceneVersion.LUCENE_48, analyzer));
+
+            provider = new LuceneDataProvider(directory, analyzer, version, writer);
         }
 
         protected virtual Analyzer GetAnalyzer(Version version)
@@ -41,14 +43,16 @@ namespace Lucene.Net.Linq.Tests.Integration
                 Key = (count++).ToString();
             }
 
+            [Field(DocValues = true)]
             public string Name { get; set; }
 
-            [Field(IndexMode.NotAnalyzed)]
+            [Field(IndexMode.NotAnalyzed, DocValues = true)]
             public string Id { get; set; }
 
             [Field(Key = true)]
             public string Key { get; set; }
 
+            [NumericField]
             public int Scalar { get; set; }
 
             [NumericField]
@@ -60,7 +64,7 @@ namespace Lucene.Net.Linq.Tests.Integration
             [Field("backing_version", Converter = typeof(VersionConverter))]
             public System.Version Version { get; set; }
 
-            [Field("backing_field")]
+            [Field("backing_field", DocValues = true)]
             public string Alias { get; set; }
 
             [NumericField(Converter = typeof(BoolToIntConverter))]

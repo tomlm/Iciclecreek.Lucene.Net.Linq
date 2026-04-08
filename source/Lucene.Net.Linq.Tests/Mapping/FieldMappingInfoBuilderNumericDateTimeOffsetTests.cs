@@ -31,8 +31,10 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             mapper.CopyToDocument(this, doc);
 
-            Assert.That(doc.GetFieldable("TimeStampOffset").TokenStreamValue.ToString(), Is.EqualTo("(numeric,valSize=64,precisionStep=4)"));
-            Assert.That(doc.GetFieldable("TimeStampOffset").StringValue, Is.EqualTo(TimeStampOffset.Value.UtcTicks.ToString()));
+            // Stage 5 port: numeric typed-field internal representation
+            // (TokenStreamValue) is no longer exposed; assert on the
+            // numeric value directly.
+            Assert.That(doc.GetField("TimeStampOffset").GetInt64Value(), Is.EqualTo(TimeStampOffset.Value.UtcTicks));
         }
 
         [Test]
@@ -43,7 +45,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
             var doc = new Document();
 
             var ts = new DateTimeOffset(new DateTime(2013, 1, 1));
-            doc.Add(new Field("TimeStampOffset", ts.ToUniversalTime().Ticks.ToString(), Field.Store.YES, Field.Index.NOT_ANALYZED));
+            doc.Add(new Int64Field("TimeStampOffset", ts.ToUniversalTime().Ticks, Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 

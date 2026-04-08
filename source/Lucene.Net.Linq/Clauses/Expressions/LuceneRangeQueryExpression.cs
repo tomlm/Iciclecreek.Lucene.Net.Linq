@@ -1,12 +1,11 @@
+using System;
 using System.Linq.Expressions;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Search;
-using Remotion.Linq.Clauses.Expressions;
-using Remotion.Linq.Parsing;
 
 namespace Lucene.Net.Linq.Clauses.Expressions
 {
-    internal class LuceneRangeQueryExpression : ExtensionExpression
+    internal class LuceneRangeQueryExpression : Expression
     {
         private readonly LuceneQueryFieldExpression field;
         private readonly Expression lower;
@@ -21,7 +20,6 @@ namespace Lucene.Net.Linq.Clauses.Expressions
         }
 
         public LuceneRangeQueryExpression(LuceneQueryFieldExpression field, Expression lower, QueryType lowerQueryType, Expression upper, QueryType upperQueryType, Occur occur)
-            : base(typeof(bool), (ExpressionType)LuceneExpressionType.LuceneRangeQueryExpression)
         {
             this.field = field;
             this.lower = lower;
@@ -31,9 +29,13 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             this.occur = occur;
         }
 
+        public override ExpressionType NodeType => ExpressionType.Extension;
+        public override Type Type => typeof(bool);
+        public override bool CanReduce => false;
+
         public LuceneQueryFieldExpression QueryField
         {
-            get { return field; }
+            get { return this.field; }
         }
 
         public Expression Lower
@@ -61,13 +63,13 @@ namespace Lucene.Net.Linq.Clauses.Expressions
             get { return occur; }
         }
 
-        protected override Expression VisitChildren(ExpressionTreeVisitor visitor)
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newField = (LuceneQueryFieldExpression)visitor.VisitExpression(field);
-            var newLower = visitor.VisitExpression(lower);
-            var newUpper = visitor.VisitExpression(upper);
+            var newField = (LuceneQueryFieldExpression)visitor.Visit(@field);
+            var newLower = visitor.Visit(lower);
+            var newUpper = visitor.Visit(upper);
 
-            return (newField == field && newLower == lower && newUpper == upper) ? this :
+            return (newField == @field && newLower == lower && newUpper == upper) ? this :
                 new LuceneRangeQueryExpression(newField, newLower, lowerQueryType, newUpper, upperQueryType, occur);
         }
 

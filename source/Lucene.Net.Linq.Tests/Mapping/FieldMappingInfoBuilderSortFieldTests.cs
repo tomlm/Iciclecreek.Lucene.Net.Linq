@@ -34,7 +34,11 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var result = CreateMapper(versionPropInfo).CreateSortField(reverse: false);
 
-            Assert.That(result.Type, Is.EqualTo(SortField.CUSTOM));
+            // SortField.CUSTOM was removed in Lucene 4.8; a custom
+            // FieldComparerSource now reports SortFieldType.CUSTOM via the
+            // SortField (Type returns CUSTOM when ComparerSource is set).
+            Assert.That(result.Type, Is.EqualTo(SortFieldType.CUSTOM));
+            Assert.That(result.ComparerSource, Is.Not.Null);
         }
 
         [Test]
@@ -42,7 +46,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var result = CreateMapper(nativeVersionPropInfo).CreateSortField(reverse: false);
 
-            Assert.That(result.Type, Is.EqualTo(SortField.STRING));
+            Assert.That(result.Type, Is.EqualTo(SortFieldType.STRING));
         }
         
         private IFieldMapper<FieldMappingInfoBuilderSortFieldTests> CreateMapper(PropertyInfo propertyInfo)

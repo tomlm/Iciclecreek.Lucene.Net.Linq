@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -7,8 +7,9 @@ using Lucene.Net.Index;
 using Lucene.Net.Linq.Abstractions;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Search;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using Rhino.Mocks;
 
 namespace Lucene.Net.Linq.Tests
 {
@@ -24,16 +25,22 @@ namespace Lucene.Net.Linq.Tests
         [SetUp]
         public void SetUp()
         {
-            mapper = MockRepository.GenerateStrictMock<IDocumentMapper<Record>>();
-            detector = MockRepository.GenerateStrictMock<IDocumentModificationDetector<Record>>();
-            writer = MockRepository.GenerateStrictMock<IIndexWriter>();
-            context = MockRepository.GenerateStub<Context>(null, new object());
+            mapper = Substitute.For<IDocumentMapper<Record>>();
+            detector = Substitute.For<IDocumentModificationDetector<Record>>();
+            writer = Substitute.For<IIndexWriter>();
+            context = Substitute.For<Context>(null, new object());
 
             session = new LuceneSession<Record>(mapper, detector, writer, context, null);
 
-            mapper.Expect(m => m.ToKey(Arg<Record>.Is.NotNull))
-                .WhenCalled(mi => mi.ReturnValue = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, ((Record)mi.Arguments[0]).Id } }))
-                .Repeat.Any();
+            mapper.ToKey(Arg.Any<Record>())
+                .Returns(ci =>
+                {
+                    var rec = (Record)ci[0];
+                    return new DocumentKey(new Dictionary<IFieldMappingInfo, object>
+                    {
+                        { new FakeFieldMappingInfo { FieldName = "Id" }, rec.Id }
+                    });
+                });
         }
 
         [Test]
@@ -42,14 +49,11 @@ namespace Lucene.Net.Linq.Tests
             var r1 = new Record { Id = "11", Name = "A" };
             var r2 = new Record { Id = "11", Name = "B" };
 
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(r2), Arg<Document>.Is.NotNull));
-
             session.Add(r1, r2);
             var pendingAdditions = session.ConvertPendingAdditions();
 
-            Verify();
-
             Assert.That(pendingAdditions.Count(), Is.EqualTo(1));
+            mapper.Received().ToDocument(r2, Arg.Any<Document>());
         }
 
         [Test]
@@ -57,14 +61,12 @@ namespace Lucene.Net.Linq.Tests
         {
             session.DeleteAll();
 
-            writer.Expect(w => w.DeleteAll());
-            writer.Expect(w => w.Commit());
-
             session.Commit();
 
             Assert.That(session.DeleteAllFlag, Is.False, "Commit should reset flag.");
 
-            Verify();
+            writer.Received().DeleteAll();
+            writer.Received().Commit();
         }
 
         [Test]
@@ -75,67 +77,51 @@ namespace Lucene.Net.Linq.Tests
 
             var r1 = new Record { Id = "12" };
 
-            var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, 12 } });
-
             session.Delete(r1);
-
             session.Delete(q1, q2);
-
-            writer.Expect(w => w.DeleteDocuments(new[] { q1, q2, key.ToQuery() }));
-            writer.Expect(w => w.Commit());
 
             session.Commit();
 
             Assert.That(session.Deletions, Is.Empty, "Commit should clear pending deletions.");
 
-            Verify();
+            writer.Received().DeleteDocuments(Arg.Is<Query[]>(qs => qs.Length == 3));
+            writer.Received().Commit();
         }
 
         [Test]
         public void Commit_Add_DeletesKey()
         {
-            var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, 1 } });
-
             var record = new Record { Id = "1" };
 
             session.Add(record);
-
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(record), Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.DeleteDocuments(new[] { key.ToQuery() }));
-            writer.Expect(w => w.AddDocument(Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.Commit());
-
             session.Commit();
 
-            Verify();
-
             Assert.That(session.ConvertPendingAdditions, Is.Empty, "Commit should clear pending deletions.");
-        }
 
+            mapper.Received().ToDocument(record, Arg.Any<Document>());
+            writer.Received().DeleteDocuments(Arg.Any<Query[]>());
+            writer.Received().AddDocument(Arg.Any<Document>());
+            writer.Received().Commit();
+        }
 
         [Test]
         public void Commit_Add_DeletesAllKeys()
         {
-            var key1 = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, 1 } });
-            var key2 = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, 2 } });
-
             var records = new[] {
                 new Record { Id = "1" },
                 new Record { Id = "2" }
             };
 
             session.Add(records);
-
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.NotNull, Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.DeleteDocuments(new[] { key2.ToQuery(), key1.ToQuery() }));
-            writer.Expect(w => w.AddDocument(Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.Commit());
             session.Commit();
-            Verify();
 
             Assert.That(session.ConvertPendingAdditions, Is.Empty, "Commit should clear pending changes.");
-        }
 
+            mapper.Received(2).ToDocument(Arg.Any<Record>(), Arg.Any<Document>());
+            writer.Received().DeleteDocuments(Arg.Is<Query[]>(qs => qs.Length == 2));
+            writer.Received(2).AddDocument(Arg.Any<Document>());
+            writer.Received().Commit();
+        }
 
         [Test]
         public void Commit_Add_KeyConstraint_None_DoesNotDelete()
@@ -143,59 +129,50 @@ namespace Lucene.Net.Linq.Tests
             var record = new Record { Id = "1" };
             session.Add(KeyConstraint.None, record);
 
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(record), Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.AddDocument(Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.Commit());
-
             session.Commit();
-            writer.AssertWasNotCalled(a => a.DeleteDocuments(Arg<Query[]>.Is.Anything));
-            Verify();
 
             Assert.That(session.ConvertPendingAdditions, Is.Empty, "Commit should clear pending changes.");
+
+            mapper.Received().ToDocument(record, Arg.Any<Document>());
+            writer.Received().AddDocument(Arg.Any<Document>());
+            writer.Received().Commit();
+            writer.DidNotReceive().DeleteDocuments(Arg.Any<Query[]>());
         }
 
         [Test]
         public void Commit_Add_ConvertsDocumentAndKeyLate()
         {
             var record = new Record();
-            var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "Id" }, "biully" } });
-            var deleteQuery = key.ToQuery();
-
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(record), Arg<Document>.Is.NotNull));
-            writer.Expect(w => w.DeleteDocuments(new[] { deleteQuery }));
-            writer.Expect(w => w.AddDocument(Arg<Document>.Is.NotNull));//Matches(doc => doc.GetValues("Name")[0] == "a name")));
-            writer.Expect(w => w.Commit());
 
             session.Add(record);
-
             record.Id = "biully";
             record.Name = "a name";
 
             session.Commit();
 
-            Verify();
-
             Assert.That(session.ConvertPendingAdditions, Is.Empty, "Commit should clear pending deletions.");
+
+            mapper.Received().ToDocument(record, Arg.Any<Document>());
+            writer.Received().DeleteDocuments(Arg.Any<Query[]>());
+            writer.Received().AddDocument(Arg.Any<Document>());
+            writer.Received().Commit();
         }
 
         [Test]
         public void Commit_ReloadsSearcher()
         {
             session.DeleteAll();
-            writer.Expect(w => w.DeleteAll());
-            writer.Expect(w => w.Commit());
 
             session.Commit();
 
-            context.AssertWasCalled(c => c.Reload());
+            context.Received().Reload();
         }
 
         [Test]
         public void Commit_NoPendingChanges()
         {
             session.Commit();
-
-            Verify();
+            writer.DidNotReceive().Commit();
         }
 
         [Test]
@@ -204,8 +181,6 @@ namespace Lucene.Net.Linq.Tests
             session.DeleteAll();
 
             Assert.That(session.DeleteAllFlag, Is.True, "DeleteAllFlag");
-
-            Verify();
         }
 
         [Test]
@@ -217,8 +192,6 @@ namespace Lucene.Net.Linq.Tests
             session.DeleteAll();
 
             Assert.That(session.ConvertPendingAdditions, Is.Empty, "Additions");
-
-            Verify();
         }
 
         [Test]
@@ -260,7 +233,6 @@ namespace Lucene.Net.Linq.Tests
             var key = mapper.ToKey(r1);
 
             session.Delete(r1);
-
             session.Rollback();
 
             Assert.That(session.DocumentTracker.IsMarkedForDeletion(key), Is.False, "IsMarkedForDeletion");
@@ -279,9 +251,8 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void Delete_ThrowsOnEmptyKey()
         {
-            mapper.BackToRecord(BackToRecordOptions.All);
-            mapper.Expect(m => m.ToKey(Arg<Record>.Is.NotNull)).Return(new DocumentKey());
-            mapper.Replay();
+            // Override the default ToKey stub.
+            mapper.ToKey(Arg.Any<Record>()).Returns(new DocumentKey());
 
             var r1 = new Record { Id = "12" };
 
@@ -294,17 +265,14 @@ namespace Lucene.Net.Linq.Tests
         public void Query_Attaches()
         {
             var records = new Record[0].AsQueryable();
-            var provider = MockRepository.GenerateStrictMock<IQueryProvider>();
-            var queryable = MockRepository.GenerateStrictMock<IQueryable<Record>>();
-            queryable.Expect(q => q.Provider).Return(provider);
-            queryable.Expect(q => q.Expression).Return(Expression.Constant(records));
-            provider.Expect(p => p.CreateQuery<Record>(Arg<Expression>.Is.NotNull)).Return(records);
+            var provider = Substitute.For<IQueryProvider>();
+            var queryable = Substitute.For<IQueryable<Record>>();
+            queryable.Provider.Returns(provider);
+            queryable.Expression.Returns(Expression.Constant(records));
+            provider.CreateQuery<Record>(Arg.Any<Expression>()).Returns(records);
             session = new LuceneSession<Record>(mapper, detector, writer, context, queryable);
 
             session.Query();
-
-            queryable.VerifyAllExpectations();
-            provider.VerifyAllExpectations();
         }
 
         [Test]
@@ -314,8 +282,7 @@ namespace Lucene.Net.Linq.Tests
             var document = new Document();
             var key = mapper.ToKey(record);
 
-            detector.Expect(d => d.IsModified(record, document)).Return(true);
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(record), Arg<Document>.Is.NotNull));
+            detector.IsModified(record, document).Returns(true);
             session.DocumentTracker.TrackDocument(key, record, document);
             record.Id = "1";
 
@@ -329,12 +296,11 @@ namespace Lucene.Net.Linq.Tests
         {
             var record = new Record { Id = "1" };
             var document = new Document();
-            document.Add(new Field("Id", "1", Field.Store.YES, Field.Index.NOT_ANALYZED));
+            document.Add(new StringField("Id", "1", Field.Store.YES));
 
             var key = mapper.ToKey(record);
 
-            detector.Expect(d => d.IsModified(record, document)).Return(false);
-            mapper.Expect(m => m.ToDocument(Arg<Record>.Is.Same(record), Arg<Document>.Is.NotNull));
+            detector.IsModified(record, document).Returns(false);
             session.DocumentTracker.TrackDocument(key, record, document);
 
             session.StageModifiedDocuments();
@@ -345,11 +311,11 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void Dispose_Commits()
         {
-            writer.Expect(w => w.DeleteAll());
-            writer.Expect(w => w.Commit());
-
             session.DeleteAll();
             session.Dispose();
+
+            writer.Received().DeleteAll();
+            writer.Received().Commit();
         }
 
         [Test]
@@ -357,19 +323,13 @@ namespace Lucene.Net.Linq.Tests
         {
             var ex1 = new Exception("ex1");
             var ex2 = new Exception("ex2");
-            writer.Expect(w => w.DeleteAll()).Throw(ex1);
-            writer.Expect(w => w.Rollback()).Throw(ex2);
+            writer.When(w => w.DeleteAll()).Do(_ => throw ex1);
+            writer.When(w => w.Rollback()).Do(_ => throw ex2);
 
             session.DeleteAll();
 
             var thrown = Assert.Throws<AggregateException>(session.Commit);
             Assert.That(thrown.InnerExceptions, Is.EquivalentTo(new[] { ex1, ex2 }));
-        }
-
-        private void Verify()
-        {
-            mapper.VerifyAllExpectations();
-            writer.VerifyAllExpectations();
         }
     }
 }

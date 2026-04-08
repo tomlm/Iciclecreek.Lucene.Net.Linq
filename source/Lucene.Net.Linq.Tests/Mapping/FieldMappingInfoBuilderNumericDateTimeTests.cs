@@ -32,8 +32,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             mapper.CopyToDocument(this, doc);
 
-            Assert.That(doc.GetFieldable("TimeStamp").TokenStreamValue.ToString(), Is.EqualTo("(numeric,valSize=64,precisionStep=4)"));
-            Assert.That(doc.GetFieldable("TimeStamp").StringValue, Is.EqualTo(TimeStamp.ToUniversalTime().Ticks.ToString()));
+            Assert.That(doc.GetField("TimeStamp").GetInt64Value(), Is.EqualTo(TimeStamp.ToUniversalTime().Ticks));
         }
 
         [Test]
@@ -44,7 +43,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
             var doc = new Document();
 
             var ts = new DateTime(2013, 1, 1).ToUniversalTime();
-            doc.Add(new Field("TimeStamp", ts.ToUniversalTime().Ticks.ToString(), Field.Store.YES, Field.Index.NOT_ANALYZED));
+            doc.Add(new Int64Field("TimeStamp", ts.ToUniversalTime().Ticks, Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 

@@ -1,7 +1,8 @@
 ﻿using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using NUnit.Framework;
 
 namespace Lucene.Net.Linq.Tests.Fluent
@@ -25,7 +26,7 @@ namespace Lucene.Net.Linq.Tests.Fluent
             Assert.That(info.TermVector, Is.EqualTo(TermVectorMode.No));
             Assert.That(info.Converter, Is.Null);
             Assert.That(info.FieldName, Is.EqualTo("Name"));
-            Assert.That(info.DefaultParseOperator, Is.EqualTo(QueryParser.OR_OPERATOR));
+            Assert.That(info.DefaultParseOperator, Is.EqualTo(Operator.OR));
             Assert.That(info.PropertyName, Is.EqualTo("Name"));
             Assert.That(info.PropertyInfo, Is.Not.Null);
             Assert.That(info.NativeSort, Is.False, "NativeSort");
@@ -75,7 +76,7 @@ namespace Lucene.Net.Linq.Tests.Fluent
 
             var info = GetMappingInfo("Name");
 
-            Assert.That(info.DefaultParseOperator, Is.EqualTo(QueryParser.AND_OPERATOR));
+            Assert.That(info.DefaultParseOperator, Is.EqualTo(Operator.AND));
         }
 
         [Test]

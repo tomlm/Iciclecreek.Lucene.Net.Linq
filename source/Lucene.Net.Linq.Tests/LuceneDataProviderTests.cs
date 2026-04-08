@@ -1,14 +1,16 @@
 using System;
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Abstractions;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Store;
+using NSubstitute;
 using NUnit.Framework;
-using Rhino.Mocks;
-using Version = Lucene.Net.Util.Version;
+using LuceneVersion = Lucene.Net.Util.LuceneVersion;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Tests
 {
@@ -23,7 +25,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void OpenSessionWithoutWriterCreatesIndexWhenMissing()
         {
-            var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(), Version.LUCENE_29);
+            var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_48);
 
             TestDelegate call = () => provider.OpenSession<Item>();
 
@@ -33,9 +35,9 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void OpenSessionThrowsWhenDocumentMapperDoesNotImplementModificationDetector()
         {
-            var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(), Version.LUCENE_29);
+            var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_48);
 
-            TestDelegate call = () => provider.OpenSession(MockRepository.GenerateStrictMock<IDocumentMapper<Item>>());
+            TestDelegate call = () => provider.OpenSession(Substitute.For<IDocumentMapper<Item>>());
 
             Assert.That(call, Throws.ArgumentException.With.Property("ParamName").EqualTo("documentMapper"));
         }
@@ -44,8 +46,12 @@ namespace Lucene.Net.Linq.Tests
         public void RegisterCacheWarmingCallback()
         {
             var directory = new RAMDirectory();
-            var writer = new IndexWriter(directory, new CaseInsensitiveKeywordAnalyzer(), true, IndexWriter.MaxFieldLength.UNLIMITED);
-            var provider = new LuceneDataProvider(directory, new SimpleAnalyzer(), Version.LUCENE_29, writer);
+            var writer = new IndexWriter(directory, new IndexWriterConfig(LuceneVersion.LUCENE_48, new CaseInsensitiveKeywordAnalyzer()));
+            // Stage 6 port: Lucene 4.8 doesn't lay down segments until the
+            // first AddDocument; an empty commit gives DirectoryReader.Open
+            // a segments_* file to work with.
+            writer.Commit();
+            var provider = new LuceneDataProvider(directory, new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_48, writer);
 
             var count = -1;
 
@@ -59,7 +65,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void CreatesIndex()
         {
-            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_48);
 
             Assert.That(provider.AsQueryable<A>().Count(), Is.EqualTo(0));
         }
@@ -67,17 +73,18 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void DisposesInternallyCreatedWriter()
         {
-            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
-            
+            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_48);
+
+            var writer = provider.IndexWriter;
             provider.Dispose();
 
-            provider.IndexWriter.AssertWasCalled(w => w.Dispose());
+            writer.Received().Dispose();
         }
 
         [Test]
         public void UsesSameWriterInstance()
         {
-            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_48);
 
             Assert.That(provider.IndexWriter, Is.SameAs(provider.IndexWriter), "provider.IndexWriter");
         }
@@ -85,57 +92,59 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void CreatesNewWriterAfterRollback()
         {
-            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new TestableLuceneDataProvider(new RAMDirectory(), Version.LUCENE_48);
 
             var first = provider.IndexWriter;
 
-            first.Expect(iw => iw.IsClosed).Return(true);
+            first.IsClosed.Returns(true);
 
             var next = provider.IndexWriter;
 
             Assert.That(next, Is.Not.SameAs(first), "Should create new writer when current is closed.");
         }
-        
+
         [Test]
         public void ThrowsWhenExternallyCreatedWriterIsClosed()
         {
-            var writer = MockRepository.GenerateStrictMock<IIndexWriter>();
-            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_30, writer, new object());
-            
-            writer.Expect(iw => iw.IsClosed).Return(true);
-            
+            var writer = Substitute.For<IIndexWriter>();
+            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_48, writer, new object());
+
+            writer.IsClosed.Returns(true);
+
             TestDelegate call = () => provider.IndexWriter.ToString();
-            
+
             Assert.That(call, Throws.InvalidOperationException);
         }
 
         [Test]
         public void DoesNotDisposeExternallyProvidesWriter()
         {
-            var writer = MockRepository.GenerateMock<IIndexWriter>();
-            var provider = new LuceneDataProvider(new RAMDirectory(), new KeywordAnalyzer(), Version.LUCENE_30, writer, new object());
+            var writer = Substitute.For<IIndexWriter>();
+            var provider = new LuceneDataProvider(new RAMDirectory(), new KeywordAnalyzer(), Version.LUCENE_48, writer, new object());
 
             provider.Dispose();
 
-            writer.AssertWasNotCalled(w => w.Dispose());
+            writer.DidNotReceive().Dispose();
         }
 
         public class TestableLuceneDataProvider : LuceneDataProvider
         {
+            private readonly IIndexWriter[] writers = { null };
+
             public TestableLuceneDataProvider(Directory directory, Version version) : base(directory, version)
             {
             }
 
             protected override IIndexWriter GetIndexWriter(Analyzer analyzer)
             {
-                return MockRepository.GenerateMock<IIndexWriter>();
+                return Substitute.For<IIndexWriter>();
             }
         }
 
         [Test]
         public void MergesAnalyzersForSessionsOfDifferentTypes()
         {
-            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new LuceneDataProvider(new RAMDirectory(), Version.LUCENE_48);
 
             provider.OpenSession<A>();
             provider.OpenSession<B>();
@@ -146,10 +155,10 @@ namespace Lucene.Net.Linq.Tests
 
         public class A
         {
-            [Field(Analyzer=typeof(SimpleAnalyzer))]
+            [Field(Analyzer = typeof(SimpleAnalyzer))]
             public string Prop1 { get; set; }
         }
-        
+
         public class B
         {
             [Field(Analyzer = typeof(WhitespaceAnalyzer))]

@@ -2,9 +2,9 @@ using System;
 using NUnit.Framework;
 using Lucene.Net.Index;
 using Lucene.Net.Store;
-using Lucene.Net.Analysis.Standard;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Linq.Abstractions;
-using Lucene.Net.Analysis;
+using Lucene.Net.Util;
 
 namespace Lucene.Net.Linq.Tests
 {
@@ -14,7 +14,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void SetsFlagOnDispose()
         {
-            var target = new IndexWriter(new RAMDirectory(), new KeywordAnalyzer(), IndexWriter.MaxFieldLength.UNLIMITED);
+            var target = new IndexWriter(new RAMDirectory(), new IndexWriterConfig(LuceneVersion.LUCENE_48, new KeywordAnalyzer()));
 
             var adapter = new IndexWriterAdapter(target);
 
@@ -26,7 +26,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void SetsFlagOnRollback()
         {
-            var target = new IndexWriter(new RAMDirectory(), new KeywordAnalyzer(), IndexWriter.MaxFieldLength.UNLIMITED);
+            var target = new IndexWriter(new RAMDirectory(), new IndexWriterConfig(LuceneVersion.LUCENE_48, new KeywordAnalyzer()));
             
             var adapter = new IndexWriterAdapter(target);
             

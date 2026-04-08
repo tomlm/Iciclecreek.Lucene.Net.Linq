@@ -1,5 +1,6 @@
 ﻿using System;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Fluent;
 using Lucene.Net.Linq.Mapping;
@@ -43,7 +44,7 @@ namespace Lucene.Net.Linq.Tests.Fluent
         [Test]
         public void SpecifyAnalyzer()
         {
-            var analyzer = new SimpleAnalyzer();
+            var analyzer = new SimpleAnalyzer(global::Lucene.Net.Util.LuceneVersion.LUCENE_48);
 
             map.Property(x => x.Date).AnalyzeWith(analyzer);
 

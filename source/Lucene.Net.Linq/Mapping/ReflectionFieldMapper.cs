@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
@@ -7,9 +7,10 @@ using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
-using Version = Lucene.Net.Util.Version;
+using Lucene.Net.Util;
+using Version = Lucene.Net.Util.LuceneVersion;
 using System.Linq.Expressions;
 using System.Collections.Concurrent;
 
@@ -26,11 +27,13 @@ namespace Lucene.Net.Linq.Mapping
         protected readonly TermVectorMode termVector;
         protected readonly TypeConverter converter;
         protected readonly string fieldName;
-        protected readonly QueryParser.Operator defaultParserOperator;
+        protected readonly Operator defaultParserOperator;
         protected readonly bool caseSensitive;
         protected readonly Analyzer analyzer;
         protected readonly float boost;
         protected readonly bool nativeSort;
+        protected readonly bool docValues;
+        private readonly FieldType fieldType;
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector,
                                      TypeConverter converter, string fieldName, bool caseSensitive, Analyzer analyzer)
@@ -40,12 +43,17 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, bool caseSensitive, Analyzer analyzer, float boost)
-            : this(propertyInfo, store, index, termVector, converter, fieldName, QueryParser.Operator.OR, caseSensitive, analyzer, boost)
+            : this(propertyInfo, store, index, termVector, converter, fieldName, Operator.OR, caseSensitive, analyzer, boost)
         {
 
         }
 
-        public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, QueryParser.Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort = false)
+        public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort = false)
+            : this(propertyInfo, store, index, termVector, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues: false)
+        {
+        }
+
+        public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort, bool docValues)
         {
             this.propertyInfo = propertyInfo;
             this.propertyGetter = CreatePropertyGetter(propertyInfo);
@@ -61,105 +69,25 @@ namespace Lucene.Net.Linq.Mapping
             this.analyzer = analyzer;
             this.boost = boost;
             this.nativeSort = nativeSort;
+            this.docValues = docValues;
+            this.fieldType = FieldTypeBuilder.Build(store, index, termVector);
         }
 
-        public virtual Analyzer Analyzer
-        {
-            get
-            {
-                return analyzer;
-            }
-        }
+        public virtual Analyzer Analyzer => analyzer;
+        public virtual PropertyInfo PropertyInfo => propertyInfo;
+        public virtual StoreMode Store => store;
+        public virtual IndexMode IndexMode => index;
+        public virtual TermVectorMode TermVector => termVector;
+        public virtual TypeConverter Converter => converter;
+        public virtual string FieldName => fieldName;
+        public virtual bool CaseSensitive => caseSensitive;
+        public virtual float Boost => boost;
+        public virtual string PropertyName => propertyInfo.Name;
+        public virtual Operator DefaultParseOperator => defaultParserOperator;
+        public virtual bool NativeSort => nativeSort;
+        public virtual bool DocValues => docValues;
 
-        public virtual PropertyInfo PropertyInfo
-        {
-            get
-            {
-                return propertyInfo;
-            }
-        }
-
-        public virtual StoreMode Store
-        {
-            get
-            {
-                return store;
-            }
-        }
-
-        public virtual IndexMode IndexMode
-        {
-            get
-            {
-                return index;
-            }
-        }
-
-        public virtual TermVectorMode TermVector
-        {
-            get
-            {
-                return termVector;
-            }
-        }
-
-        public virtual TypeConverter Converter
-        {
-            get
-            {
-                return converter;
-            }
-        }
-
-        public virtual string FieldName
-        {
-            get
-            {
-                return fieldName;
-            }
-        }
-
-        public virtual bool CaseSensitive
-        {
-            get
-            {
-                return caseSensitive;
-            }
-        }
-
-        public virtual float Boost
-        {
-            get
-            {
-                return boost;
-            }
-        }
-
-        public virtual string PropertyName
-        {
-            get
-            {
-                return propertyInfo.Name;
-            }
-        }
-
-        public virtual QueryParser.Operator DefaultParseOperator
-        {
-            get
-            {
-                return defaultParserOperator;
-            }
-        }
-
-        public virtual bool NativeSort
-        {
-            get { return nativeSort; }
-        }
-
-        public virtual object GetPropertyValue(T source)
-        {
-            return propertyGetter(source);
-        }
+        public virtual object GetPropertyValue(T source) => propertyGetter(source);
 
         public virtual void CopyFromDocument(Document source, IQueryExecutionContext context, T target)
         {
@@ -173,7 +101,7 @@ namespace Lucene.Net.Linq.Mapping
 
         public object GetFieldValue(Document document)
         {
-            var field = document.GetFieldable(fieldName);
+            var field = document.GetField(fieldName);
 
             if (field == null)
                 return null;
@@ -205,7 +133,7 @@ namespace Lucene.Net.Linq.Mapping
 
         public virtual string EscapeSpecialCharacters(string value)
         {
-            return QueryParser.Escape(value ?? string.Empty);
+            return QueryParserBase.Escape(value ?? string.Empty);
         }
 
         public virtual Query CreateQuery(string pattern)
@@ -217,7 +145,7 @@ namespace Lucene.Net.Linq.Mapping
                 return query;
             }
 
-            var queryParser = new QueryParser(Version.LUCENE_30, FieldName, analyzer)
+            var queryParser = new QueryParser(Version.LUCENE_48, FieldName, analyzer)
             {
                 AllowLeadingWildcard = true,
                 LowercaseExpandedTerms = !CaseSensitive,
@@ -242,7 +170,7 @@ namespace Lucene.Net.Linq.Mapping
             var terms = Analyzer.GetTerms(FieldName, pattern).ToList();
 
             if (terms.Count > 1) return false;
-            
+
             var termValue = Unescape(terms.Single());
             var term = new Term(FieldName, termValue);
 
@@ -258,10 +186,6 @@ namespace Lucene.Net.Linq.Mapping
             return true;
         }
 
-        /// <summary>
-        /// Determine if a (potentially escaped) pattern contains
-        /// any non-escaped wildcard characters such as <c>*</c> or <c>?</c>.
-        /// </summary>
         protected virtual bool IsWildcardPattern(string pattern)
         {
             var unescaped = pattern.Replace(@"\\", "");
@@ -269,51 +193,33 @@ namespace Lucene.Net.Linq.Mapping
                 || unescaped.Replace(@"\?", "").Contains("?");
         }
 
-        /// <summary>
-        /// Remove escape characters from a pattern. This method
-        /// is called when a <see cref="Query"/> is being created without using
-        /// <see cref="QueryParser.Parse"/>.
-        /// </summary>
         protected virtual string Unescape(string pattern)
         {
             return pattern.Replace(@"\", "");
         }
 
-        /// <summary>
-        /// Creates a property getter method with Lambda Expressions.
-        /// </summary>
-        /// <param name="propertyInfo">The property info.</param>
         private static Func<T, object> CreatePropertyGetter(System.Reflection.PropertyInfo propertyInfo)
         {
-            // check cache to avoid creating another method
             string cacheKey = "getter." + propertyInfo.GetHashCode ();
             object cache;
             if (internalCache.TryGetValue (cacheKey, out cache))
                 return (Func<T, object>)cache;
-            
-            // create method
+
             var name = propertyInfo.Name;
             var source = Expression.Parameter(typeof(T));
             var method = Expression.Lambda<Func<T, object>>(Expression.Convert(Expression.Property(source, name), typeof (object)), source).Compile();
 
-            // add to cache and return
             internalCache.TryAdd (cacheKey, method);
             return method;
         }
 
-        /// <summary>
-        /// Creates a property setter method with Lambda Expressions.
-        /// </summary>
-        /// <param name="propertyInfo">The property info.</param>
         private static Action<T, object> CreatePropertySetter(System.Reflection.PropertyInfo propertyInfo)
         {
-            // check cache to avoid creating another method
             string cacheKey = "setter." + propertyInfo.GetHashCode ();
             object cache;
             if (internalCache.TryGetValue (cacheKey, out cache))
                 return (Action<T, object>)cache;
-            
-            // create method
+
             var name = propertyInfo.Name;
             var propType = propertyInfo.PropertyType;
 
@@ -325,7 +231,6 @@ namespace Lucene.Net.Linq.Mapping
 
             var method = Expression.Lambda<Action<T, object>> (Expression.Assign (propExp, castToObject), sourceType, argument).Compile ();
 
-            // add to cache and return
             internalCache.TryAdd (cacheKey, method);
             return method;
         }
@@ -337,17 +242,30 @@ namespace Lucene.Net.Linq.Mapping
 
             var lowerBoundStr = lowerBound == null ? null : EvaluateExpressionToStringAndAnalyze(lowerBound);
             var upperBoundStr = upperBound == null ? null : EvaluateExpressionToStringAndAnalyze(upperBound);
-            return new TermRangeQuery(FieldName, lowerBoundStr, upperBoundStr, minInclusive, maxInclusive);
+            return TermRangeQuery.NewStringRange(FieldName, lowerBoundStr, upperBoundStr, minInclusive, maxInclusive);
         }
 
         public virtual SortField CreateSortField(bool reverse)
         {
+            if (docValues)
+                return new SortField(FieldName, SortFieldType.STRING, reverse);
+
             if (Converter == null || NativeSort)
-                return new SortField(FieldName, SortField.STRING, reverse);
+                return new SortField(FieldName, SortFieldType.STRING, reverse);
 
             var propertyType = propertyInfo.PropertyType;
 
-            FieldComparatorSource source;
+            // Lucene.Net 4.8's FieldComparer<T> constrains T to reference
+            // types, so the converter-based custom comparator path can only
+            // service properties whose declared type is a reference type.
+            // Value types (int, bool, DateTime, nullables) fall back to a
+            // string SortField; properties that need true numeric ordering
+            // should be marked [NumericField], which routes to
+            // NumericReflectionFieldMapper and a typed SortField instead.
+            if (propertyType.IsValueType || Nullable.GetUnderlyingType(propertyType) != null)
+                return new SortField(FieldName, SortFieldType.STRING, reverse);
+
+            FieldComparerSource source;
 
             if (typeof(IComparable).IsAssignableFrom(propertyType))
             {
@@ -359,7 +277,8 @@ namespace Lucene.Net.Linq.Mapping
             }
             else
             {
-                throw new NotSupportedException(string.Format("The type {0} does not implement IComparable or IComparable<T>. To use alphanumeric sorting, specify NativeSort=true on the mapping.",
+                throw new NotSupportedException(string.Format(
+                    "The type {0} does not implement IComparable or IComparable<T>. To use alphanumeric sorting, specify NativeSort=true on the mapping.",
                     propertyType));
             }
 
@@ -371,9 +290,9 @@ namespace Lucene.Net.Linq.Mapping
             return analyzer.Analyze(FieldName, ConvertToQueryExpression(value));
         }
 
-        protected internal virtual object ConvertFieldValue(IFieldable field)
+        protected internal virtual object ConvertFieldValue(IIndexableField field)
         {
-            var fieldValue = (object)field.StringValue;
+            var fieldValue = (object)field.GetStringValue();
 
             if (converter != null)
             {
@@ -400,17 +319,19 @@ namespace Lucene.Net.Linq.Mapping
 
             if (fieldValue != null)
             {
-                var field = new Field(fieldName, fieldValue, FieldStore, (Field.Index)index, (Field.TermVector)TermVector);
+                var field = new Field(fieldName, fieldValue, fieldType);
                 field.Boost = Boost;
                 target.Add(field);
-            }
-        }
 
-        protected Field.Store FieldStore
-        {
-            get
-            {
-                return (Field.Store)store;
+                if (docValues)
+                {
+                    // Parallel SortedDocValues column for fast sort/group/facet.
+                    // Lucene 4.8 allows a same-named DV field alongside the
+                    // indexed/stored field; the typed SortField path reads
+                    // from this column at sort time without uninverting via
+                    // FieldCache.
+                    target.Add(new SortedDocValuesField(fieldName, new BytesRef(fieldValue)));
+                }
             }
         }
     }

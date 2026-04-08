@@ -29,7 +29,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         public void SetUp()
         {
             directory = new RAMDirectory();
-            provider = new LuceneDataProvider(directory, Version.LUCENE_30);
+            provider = new LuceneDataProvider(directory, LuceneVersion.LUCENE_48);
             using (var session = provider.OpenSession<Item>())
             {
                 session.Add(new Item { Id = "0", Enum = SampleEnum.Things, NumericEnum = SampleEnum.Things });

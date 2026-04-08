@@ -101,7 +101,7 @@ namespace Sample
                 provider = new LuceneDataProvider(directory, version);
 
                 modificationDetector = new PropertyChangedModificationDetector<ExampleEntity>();
-                map = new ClassMap<ExampleEntity>(Version.LUCENE_30);
+                map = new ClassMap<ExampleEntity>(LuceneVersion.LUCENE_48);
                 map.Key(e => e.Id);
                 map.Property(e => e.Name);
 

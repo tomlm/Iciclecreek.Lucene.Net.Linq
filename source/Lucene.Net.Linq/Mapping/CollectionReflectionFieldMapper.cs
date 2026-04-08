@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using Lucene.Net.Documents;
 
@@ -18,13 +18,12 @@ namespace Lucene.Net.Linq.Mapping
         {
             var values = new ArrayList();
 
-            foreach(var value in source.GetFields(fieldName))
+            foreach (var field in source.GetFields(fieldName))
             {
-                values.Add(ConvertFieldValue(value));
+                values.Add(ConvertFieldValue(field));
             }
 
-            // TODO: support collections of IList, ISet, etc.
-            propertySetter(target, values.ToArray (elementType));
+            propertySetter(target, values.ToArray(elementType));
         }
 
         public override void CopyToDocument(T source, Document target)
@@ -33,10 +32,7 @@ namespace Lucene.Net.Linq.Mapping
 
             var value = (IEnumerable)propertyGetter(source);
 
-            if (value == null)
-            {
-                return;
-            }
+            if (value == null) return;
 
             foreach (var item in value)
             {

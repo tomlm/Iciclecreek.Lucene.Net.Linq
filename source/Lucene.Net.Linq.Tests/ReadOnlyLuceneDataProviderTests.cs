@@ -10,7 +10,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void IndexWriterIsNull()
         {
-            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), LuceneVersion.LUCENE_48);
             
             Assert.That(provider.IndexWriter, Is.Null, "provider.IndexWriter");
         }
@@ -18,7 +18,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void DisposeAvoidsNRE()
         {
-            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), LuceneVersion.LUCENE_48);
 
             TestDelegate call = provider.Dispose;
 
@@ -28,7 +28,7 @@ namespace Lucene.Net.Linq.Tests
         [Test]
         public void OpenSessionThrows()
         {
-            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), Version.LUCENE_30);
+            var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), LuceneVersion.LUCENE_48);
 
             TestDelegate call = () => provider.OpenSession<Record>();
 

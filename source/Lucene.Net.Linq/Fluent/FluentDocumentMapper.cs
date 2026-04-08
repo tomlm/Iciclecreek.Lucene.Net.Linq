@@ -1,5 +1,5 @@
 ﻿using Lucene.Net.Linq.Mapping;
-using Lucene.Net.Util;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Fluent
 {

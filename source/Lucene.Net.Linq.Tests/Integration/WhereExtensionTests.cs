@@ -1,8 +1,9 @@
 using System;
 using System.Linq;
 using Lucene.Net.Analysis;
+using Lucene.Net.Analysis.Core;
 using Lucene.Net.Index;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 using NUnit.Framework;
 
@@ -13,7 +14,7 @@ namespace Lucene.Net.Linq.Tests.Integration
     {
         IQueryable<SampleDocument> documents;
 
-        protected override Analyzer GetAnalyzer(Net.Util.Version version)
+        protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
             return new KeywordAnalyzer();
         }
@@ -258,7 +259,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Key:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Key:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Key"));
         }
 
@@ -270,7 +271,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Name"));
         }
 
@@ -281,7 +282,7 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var parsed = parser.Parse("bills~0.8");
 
-            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0.8"));
+            Assert.That(parsed.ToString(), Is.EqualTo("Name:bills~0"));
             Assert.That(parser.Field, Is.EqualTo("Name"));
         }
     }

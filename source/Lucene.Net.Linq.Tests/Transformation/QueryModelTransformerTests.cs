@@ -1,11 +1,10 @@
-﻿using System.Linq.Expressions;
-using Lucene.Net.Linq.Tests.Translation.TreeVisitors;
+using System.Linq.Expressions;
 using Lucene.Net.Linq.Transformation;
+using Lucene.Net.Linq.Util;
+using NSubstitute;
 using NUnit.Framework;
 using Remotion.Linq;
 using Remotion.Linq.Clauses;
-using Remotion.Linq.Parsing;
-using Rhino.Mocks;
 
 namespace Lucene.Net.Linq.Tests.Transformation
 {
@@ -14,29 +13,21 @@ namespace Lucene.Net.Linq.Tests.Transformation
     {
         private static readonly ConstantExpression constantExpression = Expression.Constant(true);
         private static readonly WhereClause whereClause = new WhereClause(constantExpression);
-        private ExpressionTreeVisitor visitor1;
-        private ExpressionTreeVisitor visitor2;
+        private LuceneExpressionVisitor visitor1;
+        private LuceneExpressionVisitor visitor2;
         private QueryModelTransformer transformer;
-        private readonly QueryModel queryModel = new QueryModel(new MainFromClause("i", typeof(Record), Expression.Constant("r")), new SelectClause(Expression.Constant("a")) );
-        private MockRepository mocks;
+        private readonly QueryModel queryModel = new QueryModel(new MainFromClause("i", typeof(Record), Expression.Constant("r")), new SelectClause(Expression.Constant("a")));
 
         [SetUp]
         public void SetUp()
         {
-            mocks = new MockRepository();
-
-            visitor1 = mocks.StrictMock<ExpressionTreeVisitor>();
-            visitor2 = mocks.StrictMock<ExpressionTreeVisitor>();
+            visitor1 = Substitute.For<LuceneExpressionVisitor>();
+            visitor2 = Substitute.For<LuceneExpressionVisitor>();
             var visitors = new[] { visitor1, visitor2 };
             transformer = new QueryModelTransformer(visitors, visitors);
-            
-            using (mocks.Ordered())
-            {
-                visitor1.Expect(v => v.VisitExpression(whereClause.Predicate)).Return(whereClause.Predicate);
-                visitor2.Expect(v => v.VisitExpression(whereClause.Predicate)).Return(whereClause.Predicate);
-            }
 
-            mocks.ReplayAll();
+            visitor1.Visit(whereClause.Predicate).Returns(whereClause.Predicate);
+            visitor2.Visit(whereClause.Predicate).Returns(whereClause.Predicate);
         }
 
         [Test]
@@ -44,7 +35,11 @@ namespace Lucene.Net.Linq.Tests.Transformation
         {
             transformer.VisitWhereClause(whereClause, queryModel, 0);
 
-            Verify();
+            Received.InOrder(() =>
+            {
+                visitor1.Visit(whereClause.Predicate);
+                visitor2.Visit(whereClause.Predicate);
+            });
         }
 
         [Test]
@@ -55,12 +50,8 @@ namespace Lucene.Net.Linq.Tests.Transformation
 
             transformer.VisitOrderByClause(orderByClause, queryModel, 0);
 
-            Verify();
-        }
-
-        private void Verify()
-        {
-            mocks.VerifyAll();
+            visitor1.Received().Visit(constantExpression);
+            visitor2.Received().Visit(constantExpression);
         }
     }
 }

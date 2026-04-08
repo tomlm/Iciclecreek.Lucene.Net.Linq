@@ -1,14 +1,14 @@
-﻿using Lucene.Net.Documents;
-
 namespace Lucene.Net.Linq.Mapping
 {
-    /// <see cref="Field.TermVector"/>
+    /// <summary>
+    /// Controls term-vector storage for a field.
+    /// </summary>
     public enum TermVectorMode
     {
-        No = Field.TermVector.NO,
-        Yes = Field.TermVector.YES,
-        WithOffsets = Field.TermVector.WITH_OFFSETS,
-        WithPositions = Field.TermVector.WITH_POSITIONS,
-        WithPositionsAndOffsets = Field.TermVector.WITH_POSITIONS_OFFSETS
+        No = 0,
+        Yes = 1,
+        WithOffsets = 2,
+        WithPositions = 3,
+        WithPositionsAndOffsets = 4,
     }
 }

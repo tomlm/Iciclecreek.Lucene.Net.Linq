@@ -8,7 +8,7 @@ namespace Lucene.Net.Linq.Fluent
 {
     /// <summary>
     /// Extends <see cref="PropertyMap{T}"/> to allow a property
-    /// to be indexed as a <see cref="NumericField"/> with a
+    /// to be indexed as a <c>NumericField</c> with a
     /// given precision step. See <see cref="PropertyMap{T}.AsNumericField"/>
     /// </summary>
     public class NumericPropertyMap<T> : PropertyMap<T>
@@ -29,7 +29,7 @@ namespace Lucene.Net.Linq.Fluent
                     Store = store
                 };
 
-            return NumericFieldMappingInfoBuilder.BuildNumeric<T>(propInfo, PropertyType, attrib);
+            return NumericFieldMappingInfoBuilder.BuildNumeric<T>(propInfo, PropertyType, attrib, isCollection: false);
         }
 
         /// <summary>

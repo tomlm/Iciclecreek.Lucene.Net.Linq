@@ -2,7 +2,7 @@
 using System.ComponentModel;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
-using Lucene.Net.QueryParsers;
+using Lucene.Net.QueryParsers.Classic;
 using Lucene.Net.Search;
 using Lucene.Net.Util;
 using Attribute = System.Attribute;
@@ -32,7 +32,10 @@ namespace Lucene.Net.Linq.Mapping
         /// Specifies the name of the backing field that the property value will be mapped to.
         /// When not specified, defaults to the name of the property being decorated by this attribute.
         /// </summary>
-        public string Field { get { return field; } }
+        // 'this.field' bypasses C# 13's contextual `field` keyword inside
+        // property accessors, which would otherwise synthesize a separate
+        // (always-null) backing field for this Field property.
+        public string Field { get { return this.field; } }
 
         /// <summary>
         /// Set to true to store value in index for later retrieval, or
@@ -63,6 +66,33 @@ namespace Lucene.Net.Linq.Mapping
         /// Defaults to <c>1.0f</c>.
         /// </summary>
         public float Boost { get; set; }
+
+        /// <summary>
+        /// When <c>true</c>, write a Lucene 4.8 DocValues column for this field at
+        /// index time so sorting, grouping and faceting read from the column store
+        /// instead of uninverting the indexed terms via <c>FieldCache</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Defaults to <c>false</c>. Opt in per field when sort/group/facet performance
+        /// matters; without it, sort falls back to <c>FieldCache</c> uninversion which
+        /// is correct but slower on first touch.
+        /// </para>
+        /// <para>
+        /// Silently ignored for <see cref="System.Collections.Generic.IEnumerable{T}"/>
+        /// properties: Lucene.Net 4.8.0-beta00017 lacks <c>SortedNumericDocValuesField</c>,
+        /// and the LINQ ordering semantics don't fit <c>SortedSetDocValuesField</c>.
+        /// </para>
+        /// <para>
+        /// On reference-type properties with a <see cref="TypeConverter"/>, enabling
+        /// DocValues causes the sort to compare the converter's <em>string output</em>
+        /// byte-by-byte. That is wrong for converters like
+        /// <c>System.ComponentModel.VersionConverter</c> where <c>"10.0"</c> should
+        /// sort after <c>"2.0"</c>. For those types, leave <c>DocValues=false</c>
+        /// and rely on the converter-comparator fallback.
+        /// </para>
+        /// </remarks>
+        public bool DocValues { get; set; }
 
         internal TypeConverter ConverterInstance { get; set; }
     }
@@ -111,14 +141,14 @@ namespace Lucene.Net.Linq.Mapping
 
         /// <summary>
         /// Overrides default format pattern to use when converting ValueType
-        /// to string. If both <c cref="Format">Format</c> and
+        /// to string. If both <see cref="Format">Format</see> and
         /// <c cref="BaseFieldAttribute.Converter">Converter</c> are specified, <c>Converter</c>
         /// will take precedence and <c>Format</c> will be ignored.
         /// </summary>
         public string Format { get; set; }
 
         /// <summary>
-        /// When <c>true</c>, causes <c cref="QueryParser.LowercaseExpandedTerms"/> to
+        /// When <c>true</c>, causes <see cref="Lucene.Net.QueryParsers.Classic.QueryParserBase.LowercaseExpandedTerms"/> to
         /// be set to false to prevent wildcard queries like <c>Foo*</c> from being
         /// converted to lowercase.
         /// </summary>
@@ -130,12 +160,12 @@ namespace Lucene.Net.Linq.Mapping
         /// <value>
         /// The default parser operator.
         /// </value>
-        public QueryParser.Operator DefaultParserOperator { get; set; }
+        public Operator DefaultParserOperator { get; set; }
 
         /// <summary>
         /// When set, supplies a custom analyzer for this field. The analyzer type
         /// must have either a parameterless public constructor, or a public constructor
-        /// that accepts a <see cref="Net.Util.Version"/> argument.
+        /// that accepts a <see cref="Lucene.Net.Util.LuceneVersion"/> argument.
         /// 
         /// When an external Analyzer is provided on <see cref="LuceneDataProvider"/>
         /// methods it will override this setting.
@@ -143,14 +173,14 @@ namespace Lucene.Net.Linq.Mapping
         public Type Analyzer { get; set; }
 
         /// <summary>
-        /// Maps to <see cref="Field.TermVector"/>
+        /// Maps to <c>Field.TermVector</c>
         /// </summary>
         public TermVectorMode TermVector { get; set; }
 
         /// <summary>
         /// When <c>true</c> and the property implements <see cref="IComparable"/>
         /// and/or <see cref="IComparable{T}"/>, instructs the mapping engine to
-        /// use <see cref="SortField.STRING"/> instead of converting each field
+        /// use <see cref="Lucene.Net.Search.SortFieldType.STRING"/> instead of converting each field
         /// and using <see cref="IComparable{T}.CompareTo"/>. This is a performance
         /// enhancement in cases where the string representation of a complex type
         /// is alphanumerically sortable.
@@ -161,11 +191,11 @@ namespace Lucene.Net.Linq.Mapping
     /// <summary>
     /// Maps a <c cref="ValueType"/>, or any type that can be converted
     /// to <c cref="int"/>, <c cref="long"/>, <c cref="double"/>, or
-    /// <c cref="float"/> to a <c cref="NumericField"/> that will be
+    /// <c cref="float"/> to a <c>NumericField</c> that will be
     /// indexed as a trie structure to enable more efficient range filtering
     /// and sorting.
     /// </summary>
-    /// <see cref="NumericField"/>
+    /// <c>NumericField</c>
     [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
     public class NumericFieldAttribute : BaseFieldAttribute
     {
@@ -203,15 +233,6 @@ namespace Lucene.Net.Linq.Mapping
     /// </summary>
     [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
     public class QueryScoreAttribute : Attribute
-    {
-    }
-
-    /// <summary>
-    /// When set on a property, the document boost will be set with the property
-    /// value
-    /// </summary>
-    [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
-    public class DocumentBoostAttribute : Attribute
     {
     }
 

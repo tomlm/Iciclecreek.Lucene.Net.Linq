@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using Lucene.Net.Store;
 using NUnit.Framework;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Tests.Integration
 {
@@ -20,7 +20,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             var dir = "index." + DateTime.Now.Ticks;
             System.IO.Directory.CreateDirectory(dir);
-            var provider = new LuceneDataProvider(FSDirectory.Open(dir), Version.LUCENE_30);
+            var provider = new LuceneDataProvider(FSDirectory.Open(dir), Version.LUCENE_48);
             using (provider)
             {
                 using (var session = provider.OpenSession<Document>())

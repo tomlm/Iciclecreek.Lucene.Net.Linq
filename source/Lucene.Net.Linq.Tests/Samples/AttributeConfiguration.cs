@@ -8,7 +8,7 @@ using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.Tests.Integration;
 using Lucene.Net.Store;
 using NUnit.Framework;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Sample
 {
@@ -46,24 +46,23 @@ namespace Sample
         // Add IgnoreFieldAttribute to properties that should not be mapped to/from Document
         [IgnoreField]
         public string IgnoreMe { get; set; }
-
-        [DocumentBoost]
-        public float Boost { get; set; }
     }
 
     [TestFixture]
     public class AttributeConfiguration
     {
-        public static void Main()
+        // Renamed from "Main" to avoid clashing with the test host's
+        // entry point under SDK-style projects.
+        public static void RunSample()
         {
             var directory = new RAMDirectory();
 
-            var provider = new LuceneDataProvider(directory, Version.LUCENE_30);
+            var provider = new LuceneDataProvider(directory, Version.LUCENE_48);
 
             // add some documents
             using (var session = provider.OpenSession<Article>())
             {
-                session.Add(new Article {Author = "John Doe", BodyText = "some body text", PublishDate = DateTimeOffset.UtcNow, Boost = 2f});
+                session.Add(new Article {Author = "John Doe", BodyText = "some body text", PublishDate = DateTimeOffset.UtcNow});
             }
 
             var articles = provider.AsQueryable<Article>();
@@ -88,7 +87,7 @@ namespace Sample
         [Test, Explicit]
         public void RunMain()
         {
-            Main();
+            RunSample();
         }
     }
 

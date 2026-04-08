@@ -36,7 +36,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
 
             var ts = new TimeSpan(23, 19, 59, 58, 987);
 
-            doc.Add(new Field("Elapsed", ts.ToString(TimeSpanFormat), Field.Store.YES, Field.Index.NOT_ANALYZED));
+            doc.Add(new StringField("Elapsed", ts.ToString(TimeSpanFormat), Field.Store.YES));
 
             mapper.CopyFromDocument(doc, new QueryExecutionContext(), this);
 

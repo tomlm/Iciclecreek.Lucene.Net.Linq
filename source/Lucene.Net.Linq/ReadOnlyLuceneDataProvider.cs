@@ -3,7 +3,7 @@ using Lucene.Net.Analysis;
 using Lucene.Net.Linq.Abstractions;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Store;
-using Version = Lucene.Net.Util.Version;
+using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq
 {
