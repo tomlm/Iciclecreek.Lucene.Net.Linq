@@ -34,11 +34,11 @@ namespace Lucene.Net.Linq
 
         protected override TDocument ConvertDocument(Document doc, IQueryExecutionContext context)
         {
-            var actualType = TypeHierarchyHelper.ReadActualType(doc) ?? typeof(TDocument);
-
             var mapperBase = mapper as DocumentMapperBase<TDocument>;
             if (mapperBase != null)
             {
+                var typeString = doc.Get(TypeUtils.TYPE_FIELD);
+                var actualType = TypeUtils.ResolveType(typeString);
                 return mapperBase.CreateFromDocument(doc, context, actualType, newItem);
             }
 

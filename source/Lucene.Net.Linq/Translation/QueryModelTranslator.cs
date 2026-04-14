@@ -1,4 +1,4 @@
-﻿using Lucene.Net.Index;
+using Lucene.Net.Index;
 using Lucene.Net.Linq.Clauses;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.Translation.ResultOperatorHandlers;
@@ -95,8 +95,7 @@ namespace Lucene.Net.Linq.Translation
             var mappedType = fieldMappingInfoProvider.MappedType;
             if (mappedType == null) return;
 
-            var typeName = TypeHierarchyHelper.GetTypeFilterValue(mappedType);
-            var typeQuery = new TermQuery(new Term(TypeHierarchyHelper.TypeHierarchyFieldName, typeName));
+            var typeQuery = new TermQuery(new Term(TypeUtils.TYPES_FIELD, mappedType.FullName));
 
             if (model.Filter != null)
             {

@@ -122,13 +122,13 @@ namespace Lucene.Net.Linq.Mapping
             }
 
             var actualType = source.GetType();
-            target.Add(new StringField(TypeHierarchyHelper.TypeFieldName,
-                TypeHierarchyHelper.GetTypeIdentifier(actualType), Field.Store.YES));
+            target.Add(new StringField(TypeUtils.TYPE_FIELD,
+                actualType.FullName, Field.Store.YES));
 
-            foreach (var type in TypeHierarchyHelper.GetTypeHierarchy(actualType))
+            foreach (var type in TypeUtils.GetTypeHierarchy(actualType))
             {
-                target.Add(new StringField(TypeHierarchyHelper.TypeHierarchyFieldName,
-                    TypeHierarchyHelper.GetTypeFilterValue(type), Field.Store.YES));
+                target.Add(new StringField(TypeUtils.TYPES_FIELD,
+                    type.FullName, Field.Store.YES));
             }
         }
 
