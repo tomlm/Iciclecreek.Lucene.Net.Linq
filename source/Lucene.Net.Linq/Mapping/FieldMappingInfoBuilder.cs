@@ -13,16 +13,16 @@ using Version = Lucene.Net.Util.LuceneVersion;
 
 namespace Lucene.Net.Linq.Mapping
 {
-    public class FieldMappingInfoBuilder
+    internal class FieldMappingInfoBuilder
     {
         internal const string DefaultDateTimeFormat = "yyyy-MM-ddTHH:mm:ss";
 
-        public static IFieldMapper<T> Build<T>(PropertyInfo p)
+        internal static IFieldMapper<T> Build<T>(PropertyInfo p)
         {
             return Build<T>(p, Version.LUCENE_48, null);
         }
 
-        public static IFieldMapper<T> Build<T>(PropertyInfo p, Version version, Analyzer externalAnalyzer)
+        internal static IFieldMapper<T> Build<T>(PropertyInfo p, Version version, Analyzer externalAnalyzer)
         {
             var score = p.GetCustomAttribute<QueryScoreAttribute>(true);
 

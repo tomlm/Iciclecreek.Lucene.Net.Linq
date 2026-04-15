@@ -21,14 +21,6 @@ namespace Lucene.Net.Linq.Mapping
     public class ReflectionDocumentMapper<T> : DocumentMapperBase<T>
     {
         /// <summary>
-        /// When <c>true</c> (the default), all public properties are mapped to Lucene fields.
-        /// Set to <c>false</c> to only map properties decorated with a <see cref="BaseFieldAttribute"/>
-        /// (e.g. <see cref="FieldAttribute"/>, <see cref="NumericFieldAttribute"/>) or
-        /// <see cref="QueryScoreAttribute"/>.
-        /// </summary>
-        protected virtual bool IndexAllProperties => true;
-
-        /// <summary>
         /// Constructs an instance that will create an <see cref="Analyzer"/>
         /// using metadata on public properties on the type <typeparamref name="T"/>.
         /// </summary>
@@ -67,16 +59,8 @@ namespace Lucene.Net.Linq.Mapping
                 {
                     continue;
                 }
-
-                if (!IndexAllProperties &&
-                    p.GetCustomAttribute<BaseFieldAttribute>(true) == null &&
-                    p.GetCustomAttribute<QueryScoreAttribute>(true) == null)
-                {
-                    continue;
-                }
-
                 var mappingContext = FieldMappingInfoBuilder.Build<T>(p, version, externalAnalyzer);
-
+                
                 fieldMap.Add(mappingContext.PropertyName, mappingContext);
 
                 if (!string.IsNullOrWhiteSpace(mappingContext.FieldName) && mappingContext.Analyzer != null)
