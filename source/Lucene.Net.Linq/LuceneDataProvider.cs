@@ -116,6 +116,16 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
+        /// Refresh the internal IndexSearcher to reflect changes committed
+        /// to the IndexWriter. Uses DirectoryReader.OpenIfChanged for efficiency —
+        /// unchanged segments are reused.
+        /// </summary>
+        public void Refresh()
+        {
+            context.Reload();
+        }
+
+        /// <summary>
         /// Settings that enable or disable optional behavior.
         /// </summary>
         public LuceneDataProviderSettings Settings
