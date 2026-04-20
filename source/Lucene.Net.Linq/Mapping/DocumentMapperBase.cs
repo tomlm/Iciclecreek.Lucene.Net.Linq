@@ -85,6 +85,12 @@ namespace Lucene.Net.Linq.Mapping
             return fieldMap[propertyName];
         }
 
+        /// <summary>
+        /// Non-generic ToObject: casts to T and delegates with null context
+        /// (context is only used by score mappers during query execution).
+        /// </summary>
+        public void ToObject(Document source, object target) => ToObject(source, null, (T)target);
+
         public virtual void ToObject(Document source, IQueryExecutionContext context, T target)
         {
             foreach (var mapping in fieldMap)
@@ -92,6 +98,11 @@ namespace Lucene.Net.Linq.Mapping
                 mapping.Value.CopyFromDocument(source, context, target);
             }
         }
+
+        /// <summary>
+        /// Non-generic ToDocument: casts to T and delegates.
+        /// </summary>
+        public void ToDocument(object source, Document target) => ToDocument((T)source, target);
 
         public virtual void ToDocument(T source, Document target)
         {
