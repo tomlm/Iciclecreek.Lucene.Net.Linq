@@ -14,7 +14,7 @@ namespace Lucene.Net.Linq.Clauses.Expressions
         }
 
         public override ExpressionType NodeType => ExpressionType.Extension;
-        public override Type Type => typeof(Query);
+        public override Type Type => typeof(bool);
         public override bool CanReduce => false;
 
         protected override Expression VisitChildren(ExpressionVisitor visitor)

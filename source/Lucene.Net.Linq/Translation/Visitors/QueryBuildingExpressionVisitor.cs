@@ -184,8 +184,8 @@ namespace Lucene.Net.Linq.Translation.Visitors
         {
             var result = base.VisitBinary(expression);
 
-            var second = (BooleanQuery)queries.Pop();
-            var first = (BooleanQuery)queries.Pop();
+            var second = AsBooleanQuery(queries.Pop());
+            var first = AsBooleanQuery(queries.Pop());
             var occur = expression.NodeType == ExpressionType.AndAlso ? Occur.MUST : Occur.SHOULD;
 
             var query = new BooleanQuery();
@@ -195,6 +195,14 @@ namespace Lucene.Net.Linq.Translation.Visitors
             queries.Push(query);
 
             return result;
+        }
+
+        private static BooleanQuery AsBooleanQuery(Query query)
+        {
+            if (query is BooleanQuery bq) return bq;
+            var wrapper = new BooleanQuery();
+            wrapper.Add(query, Occur.MUST);
+            return wrapper;
         }
 
         private void Combine(BooleanQuery target, BooleanQuery source, Occur occur)

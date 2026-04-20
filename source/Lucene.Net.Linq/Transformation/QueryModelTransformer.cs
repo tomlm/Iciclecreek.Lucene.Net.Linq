@@ -31,6 +31,7 @@ namespace Lucene.Net.Linq.Transformation
                            new NoOpConditionRemovingVisitor(),
                            new NullSafetyConditionRemovingVisitor(),
                            new NoOpConvertExpressionRemovingVisitor(),
+                           new EnumerableContainsToTermsFilterVisitor(),
                            new MethodCallToLuceneQueryPredicateExpressionVisitor(),
                            new CompareCallToLuceneQueryPredicateExpressionVisitor(),
                            new FlagToBinaryConditionVisitor(),

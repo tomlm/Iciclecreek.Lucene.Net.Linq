@@ -22,7 +22,9 @@
     <PackageReference Include="Lucene.Net.Queries" />
     <PackageReference Include="Lucene.Net.QueryParser" />
     <PackageReference Include="Remotion.Linq" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
   </ItemGroup>
 
   <ItemGroup>

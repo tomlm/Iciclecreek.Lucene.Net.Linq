@@ -4,7 +4,9 @@ using System.Globalization;
 using Lucene.Net.Analysis;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Mapping;
+using Lucene.Net.Linq.Util;
 using Lucene.Net.Store;
+using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using Directory = Lucene.Net.Store.Directory;
 using LuceneVersion = Lucene.Net.Util.LuceneVersion;
@@ -18,6 +20,13 @@ namespace Lucene.Net.Linq.Tests.Integration
         protected Directory directory;
         protected IndexWriter writer;
         protected static readonly Version version = Version.LUCENE_48;
+
+        [OneTimeSetUp]
+        public void EnableDebugLogging()
+        {
+            Logging.LoggerFactory = LoggerFactory.Create(builder =>
+                builder.AddDebug().SetMinimumLevel(LogLevel.Debug));
+        }
 
         [SetUp]
         public virtual void InitializeLucene()
