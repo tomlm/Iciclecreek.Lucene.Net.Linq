@@ -275,9 +275,6 @@ namespace Lucene.Net.Linq
         /// </summary>
         private IEnumerable<T> ExecuteJoinedCollection<T>(QueryModel queryModel, List<JoinClause> joinClauses)
         {
-            // We only support a single join for now.
-            var joinClause = joinClauses[0];
-
             // Save references before mutating the query model
             var mainFromClause = queryModel.MainFromClause;
             var selectSelector = queryModel.SelectClause.Selector;
@@ -287,93 +284,124 @@ namespace Lucene.Net.Linq
                 queryModel.BodyClauses.Remove(jc);
 
             // Rewrite SelectClause to just return the outer document (identity projection)
-            // so ExecuteCollection can process it without needing the join reference.
             queryModel.SelectClause.Selector = new Remotion.Linq.Clauses.Expressions.QuerySourceReferenceExpression(mainFromClause);
 
-            // 1. Execute the outer query — materializes via the normal Lucene path
-            Log.LogDebug("Executing join: outer type={OuterType}, inner type={InnerType}, outer key={OuterKey}, inner key={InnerKey}",
-                typeof(TDocument).Name, joinClause.ItemType.Name,
-                joinClause.OuterKeySelector, joinClause.InnerKeySelector);
+            // 1. Execute the outer query
             var outerResults = ExecuteCollection<TDocument>(queryModel).ToList();
-            Log.LogDebug("Join outer query returned {Count} results", outerResults.Count);
+            Log.LogDebug("Join: outer query ({Type}) returned {Count} results", typeof(TDocument).Name, outerResults.Count);
 
-            // 2. Compile outer key selector
-            var outerParam = Expression.Parameter(typeof(TDocument), "outer");
-            var outerKeyExpr = ReplaceSingleReference(joinClause.OuterKeySelector, mainFromClause, outerParam);
-            var outerKeySelector = Expression.Lambda<Func<TDocument, object>>(
-                Expression.Convert(outerKeyExpr, typeof(object)), outerParam).Compile();
+            // 2. For each join clause, materialize the inner side with semi-join pushdown,
+            //    then perform the join. Each join narrows the running result set.
+            //    We track results as object[] tuples (flattened) and build the final
+            //    projection at the end.
+            //
+            //    For a single join:  outer.Join(inner, outerKey, innerKey, (o,i) => result)
+            //    For N joins we chain: result_0 = outer
+            //                          result_1 = result_0.Join(inner_1, ...)
+            //                          result_N = result_{N-1}.Join(inner_N, ...)
 
-            // 3. Extract distinct outer key values and build a TermsFilter for
-            //    semi-join pushdown — only fetch inner documents whose join key
-            //    matches one of the outer keys.
-            var outerKeys = outerResults.Select(outerKeySelector).Where(k => k != null).Distinct().ToList();
+            // Start with outer results wrapped as object arrays (tuple of 1)
+            IEnumerable<object[]> runningResults = outerResults.Select(o => new object[] { o });
+
+            for (int i = 0; i < joinClauses.Count; i++)
+            {
+                var joinClause = joinClauses[i];
+
+                Log.LogDebug("Join[{Index}]: inner type={InnerType}, outer key={OuterKey}, inner key={InnerKey}",
+                    i, joinClause.ItemType.Name, joinClause.OuterKeySelector, joinClause.InnerKeySelector);
+
+                // Compile the outer key selector for this join.
+                // For the first join, the outer key references mainFromClause.
+                // For subsequent joins, Re-linq references the previous join clause
+                // (which we've already materialized at position [i] in the tuple).
+                // We resolve the key by replacing the source reference with the
+                // appropriate tuple element access.
+                var tupleParam = Expression.Parameter(typeof(object[]), "t");
+                var outerKeyBody = joinClause.OuterKeySelector;
+                // Replace mainFromClause reference with tuple[0] (the outer document)
+                outerKeyBody = ReplaceSingleReference(outerKeyBody, mainFromClause,
+                    Expression.Convert(Expression.ArrayIndex(tupleParam, Expression.Constant(0)), typeof(TDocument)));
+                // Replace any previous join clause references with their tuple positions
+                for (int j = 0; j < i; j++)
+                    outerKeyBody = ReplaceSingleReference(outerKeyBody, joinClauses[j],
+                        Expression.Convert(Expression.ArrayIndex(tupleParam, Expression.Constant(j + 1)), joinClauses[j].ItemType));
+
+                var outerKeySelector = Expression.Lambda<Func<object[], object>>(
+                    Expression.Convert(outerKeyBody, typeof(object)), tupleParam).Compile();
+
+                // Extract distinct outer key values for semi-join pushdown
+                var outerKeys = runningResults.Select(outerKeySelector).Where(k => k != null).Distinct().ToList();
+
+                // Materialize inner side
+                var innerResults = MaterializeInnerWithSemiJoin(joinClause, outerKeys);
+                Log.LogDebug("Join[{Index}]: inner query returned {Count} results (from {KeyCount} outer keys)",
+                    i, innerResults.Length, outerKeys.Count);
+
+                // Compile inner key selector
+                var innerParam = Expression.Parameter(typeof(object), "inner");
+                var innerKeyBody = ReplaceSingleReference(joinClause.InnerKeySelector, joinClause,
+                    Expression.Convert(innerParam, joinClause.ItemType));
+                var innerKeySelector = Expression.Lambda<Func<object, object>>(
+                    Expression.Convert(innerKeyBody, typeof(object)), innerParam).Compile();
+
+                // Join: append inner to each tuple
+                var capturedInner = innerResults; // capture for closure
+                runningResults = runningResults.Join(
+                    capturedInner,
+                    outerKeySelector,
+                    innerKeySelector,
+                    (tuple, inner) => tuple.Append(inner).ToArray());
+            }
+
+            // 3. Build the final result selector from the original SelectClause.
+            //    Replace all source references with tuple element access.
+            var finalTupleParam = Expression.Parameter(typeof(object[]), "t");
+            var selectorBody = selectSelector;
+            selectorBody = ReplaceSingleReference(selectorBody, mainFromClause,
+                Expression.Convert(Expression.ArrayIndex(finalTupleParam, Expression.Constant(0)), typeof(TDocument)));
+            for (int i = 0; i < joinClauses.Count; i++)
+                selectorBody = ReplaceSingleReference(selectorBody, joinClauses[i],
+                    Expression.Convert(Expression.ArrayIndex(finalTupleParam, Expression.Constant(i + 1)), joinClauses[i].ItemType));
+
+            var resultSelector = Expression.Lambda<Func<object[], T>>(selectorBody, finalTupleParam).Compile();
+
+            return runningResults.Select(resultSelector);
+        }
+
+        /// <summary>
+        /// Materializes the inner side of a join, using a TermsFilter to only fetch
+        /// documents whose join key matches one of the outer key values (semi-join pushdown).
+        /// </summary>
+        private object[] MaterializeInnerWithSemiJoin(JoinClause joinClause, List<object> outerKeys)
+        {
+            if (outerKeys.Count == 0)
+                return Array.Empty<object>();
 
             var innerObj = Expression.Lambda<Func<object>>(
                 Expression.Convert(joinClause.InnerSequence, typeof(object)))
                 .Compile()();
 
-            object[] innerResults;
-            if (outerKeys.Count == 0)
+            if (innerObj is IQueryable innerQueryable)
             {
-                innerResults = Array.Empty<object>();
-            }
-            else if (innerObj is IQueryable innerQueryable)
-            {
-                // Resolve the inner key field name from the key selector expression
                 var innerKeyFieldName = ExtractFieldName(joinClause.InnerKeySelector);
-
                 if (innerKeyFieldName != null)
                 {
-                    // Build a TermsFilter for efficient multi-key lookup
                     var terms = outerKeys.Select(k => new Term(innerKeyFieldName, k.ToString())).ToList();
                     var termsFilter = new Lucene.Net.Queries.TermsFilter(terms);
                     var filterQuery = new ConstantScoreQuery(termsFilter);
-                    Log.LogDebug("Join semi-join pushdown: TermsFilter on {Field} with {Count} keys: [{Keys}]",
-                        innerKeyFieldName, terms.Count, string.Join(", ", outerKeys));
+                    Log.LogDebug("Join semi-join pushdown: TermsFilter on {Field} with {Count} keys",
+                        innerKeyFieldName, terms.Count);
 
-                    // Use the LuceneMethods.Where(Query) extension to push the filter into the inner query
-                    var filteredQueryable = LuceneMethods.Where(
-                        (dynamic)innerQueryable, filterQuery);
-                    innerResults = ((IEnumerable<object>)Enumerable.Cast<object>((dynamic)filteredQueryable)).ToArray();
+                    var filteredQueryable = LuceneMethods.Where((dynamic)innerQueryable, filterQuery);
+                    return ((IEnumerable<object>)Enumerable.Cast<object>((dynamic)filteredQueryable)).ToArray();
                 }
-                else
-                {
-                    // Can't determine field name — fall back to full materialization
-                    innerResults = innerQueryable.Cast<object>().ToArray();
-                }
-            }
-            else if (innerObj is System.Collections.IEnumerable enumerable)
-            {
-                innerResults = enumerable.Cast<object>().ToArray();
-            }
-            else
-            {
-                innerResults = Array.Empty<object>();
+                return innerQueryable.Cast<object>().ToArray();
             }
 
-            Log.LogDebug("Join inner query returned {Count} results", innerResults.Length);
+            if (innerObj is System.Collections.IEnumerable enumerable)
+                return enumerable.Cast<object>().ToArray();
 
-            // 5. Compile inner key selector for the join (targets object, not the concrete type)
-            var joinInnerParam = Expression.Parameter(typeof(object), "inner");
-            var castInner = Expression.Convert(joinInnerParam, joinClause.ItemType);
-            var innerKeyExpr = ReplaceSingleReference(joinClause.InnerKeySelector, joinClause, castInner);
-            var innerKeySelector = Expression.Lambda<Func<object, object>>(
-                Expression.Convert(innerKeyExpr, typeof(object)), joinInnerParam).Compile();
-
-            // 5. Compile result selector from the original SelectClause
-            var resultOuterParam = Expression.Parameter(typeof(TDocument), "o");
-            var resultInnerParam = Expression.Parameter(typeof(object), "i");
-            var castResultInner = Expression.Convert(resultInnerParam, joinClause.ItemType);
-
-            var selectorBody = selectSelector;
-            selectorBody = ReplaceSingleReference(selectorBody, mainFromClause, resultOuterParam);
-            selectorBody = ReplaceSingleReference(selectorBody, joinClause, castResultInner);
-
-            var resultSelector = Expression.Lambda<Func<TDocument, object, T>>(
-                selectorBody, resultOuterParam, resultInnerParam).Compile();
-
-            // 6. Perform the join in memory
-            return outerResults.Join(innerResults, outerKeySelector, innerKeySelector, resultSelector);
+            return Array.Empty<object>();
         }
 
         /// <summary>

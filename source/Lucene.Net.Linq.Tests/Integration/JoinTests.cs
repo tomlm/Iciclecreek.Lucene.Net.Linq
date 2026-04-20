@@ -14,6 +14,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         protected override Analyzer GetAnalyzer(Net.Util.LuceneVersion version)
         {
             var perField = new PerFieldAnalyzer(new KeywordAnalyzer());
+            perField.AddAnalyzer("Title", new Lucene.Net.Analysis.Standard.StandardAnalyzer(version));
             return perField;
         }
 
@@ -37,7 +38,20 @@ namespace Lucene.Net.Linq.Tests.Integration
             public string AuthorId { get; set; }
 
             [Field(IndexMode.NotAnalyzed)]
+            public string CategoryId { get; set; }
+
+            [Field(IndexMode.Analyzed)]
             public string Title { get; set; }
+        }
+
+        [DocumentKey(FieldName = "FixedKey", Value = "Category")]
+        public class Category
+        {
+            [Field(Key = true)]
+            public string CategoryId { get; set; }
+
+            [Field(IndexMode.NotAnalyzed)]
+            public string Label { get; set; }
         }
 
         private void SeedData()
@@ -223,6 +237,49 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(filteredAuthors.Count, Is.EqualTo(1),
                 "TermsFilter should only match the 1 author referenced by articles, not all 4");
             Assert.That(filteredAuthors[0].Username, Is.EqualTo("alice"));
+        }
+
+        [Test]
+        public void Join_MultipleJoins_ChainsCorrectly()
+        {
+            AddDocument(new Author { Username = "alice", DisplayName = "Alice A." });
+            AddDocument(new Author { Username = "bob", DisplayName = "Bob B." });
+            AddDocument(new Category { CategoryId = "tech", Label = "Technology" });
+            AddDocument(new Category { CategoryId = "life", Label = "Lifestyle" });
+
+            AddDocument(new Article { ArticleId = "a1", AuthorId = "alice", CategoryId = "tech", Title = "AI Trends" });
+            AddDocument(new Article { ArticleId = "a2", AuthorId = "bob", CategoryId = "life", Title = "Cooking Tips" });
+            AddDocument(new Article { ArticleId = "a3", AuthorId = "alice", CategoryId = "life", Title = "Work-Life Balance" });
+
+            var articles = provider.AsQueryable<Article>();
+            var authors = provider.AsQueryable<Author>();
+            var categories = provider.AsQueryable<Category>();
+
+            // Multi-join: all 3 articles joined with authors and categories
+            var joined = (
+                from article in articles
+                join author in authors on article.AuthorId equals author.Username
+                join category in categories on article.CategoryId equals category.CategoryId
+                select new { article.Title, author.DisplayName, category.Label }
+            ).ToList();
+
+            Assert.That(joined.Count, Is.EqualTo(3));
+            Assert.That(joined.Any(j => j.Title == "AI Trends" && j.DisplayName == "Alice A." && j.Label == "Technology"), Is.True);
+            Assert.That(joined.Any(j => j.Title == "Cooking Tips" && j.DisplayName == "Bob B." && j.Label == "Lifestyle"), Is.True);
+            Assert.That(joined.Any(j => j.Title == "Work-Life Balance" && j.DisplayName == "Alice A." && j.Label == "Lifestyle"), Is.True);
+
+            // Multi-join with Where filter on outer: only "tips" articles
+            var filtered = (
+                from article in articles.Where(a => a.Title.Contains("tips"))
+                join author in authors on article.AuthorId equals author.Username
+                join category in categories on article.CategoryId equals category.CategoryId
+                select new { article.Title, author.DisplayName, category.Label }
+            ).ToList();
+
+            Assert.That(filtered.Count, Is.EqualTo(1));
+            Assert.That(filtered[0].Title, Is.EqualTo("Cooking Tips"));
+            Assert.That(filtered[0].DisplayName, Is.EqualTo("Bob B."));
+            Assert.That(filtered[0].Label, Is.EqualTo("Lifestyle"));
         }
 
         private static Author CountSideEffect(ref int count, Author a)
