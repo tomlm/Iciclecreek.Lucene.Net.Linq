@@ -2,7 +2,14 @@
 
 Iciclecreek.Lucene.Net.Linq is a .NET library that enables LINQ queries to run natively on a Lucene.Net index.
 
-### Port
+## Installation
+
+To install the [Iciclecreek.Lucene.Net.Linq package](http://nuget.org/packages/Iciclecreek.Lucene.Net.Linq),
+run the following command in the [Package Manager Console](http://docs.nuget.org/docs/start-here/using-the-package-manager-console)
+
+    PM> Install-Package Iciclecreek.Lucene.Net.Linq
+
+## Port
 
 This branch ports the Lucene.Net.Linq library from the original `Lucene.Net.Linq 3.0.3` /
 `net40` baseline onto `Lucene.Net 4.8.0-beta00017` and SDK-style projects
@@ -16,8 +23,14 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
   myFactory;` (defaults to `NullLoggerFactory`).
 - **Tests** moved from RhinoMocks/NUnit 2 to **NSubstitute / NUnit 4**.
 
-#### New in the 4.8 port
+### New 4.x features
 
+- **Multi-targeting**: the library builds for `netstandard2.0` and
+  `net8.0`; the test project multi-targets `net48;net8.0` so the
+  netstandard build is exercised at runtime on classic .NET Framework
+  as well as modern .NET.
+- **Polymorphic select** - searching for a base type always properly instantiated object types of the original type.
+- **JOIN** LINQ join support utilizes search index to query across document types 
 - **DocValues opt-in** (`[Field(DocValues = true)]` /
   `[NumericField(DocValues = true)]`). Writes a parallel column-store
   field at index time so sorting, grouping and faceting read from a
@@ -26,12 +39,8 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
   field where sort/group performance matters. Silently ignored on
   collection (`IEnumerable<T>`) properties because Lucene.Net 4.8
   beta lacks `SortedNumericDocValuesField`.
-- **Multi-targeting**: the library builds for `netstandard2.0` and
-  `net8.0`; the test project multi-targets `net48;net8.0` so the
-  netstandard build is exercised at runtime on classic .NET Framework
-  as well as modern .NET.
 
-#### Features
+### Features
 * Automatically converts PONOs to Documents and back
 * Add, delete and update documents in atomic transaction
 * Unit of Work pattern automatically tracks and flushes updated documents
@@ -40,6 +49,8 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
 * Prefix queries
 * Range queries and numeric range queries
 * Complex boolean queries
+* **LINQ joins** across document types with automatic semi-join pushdown via `TermsFilter`
+* **`collection.Contains(field)`** — the LINQ "IN" pattern translates to an efficient `TermsFilter`
 * Native pagination using Skip and Take
 * Support storing and querying NumericField
 * Polymorphic type hierarchies: store subtypes, query by base type, get back real types
@@ -51,99 +62,13 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
 * Register cache-warming queries to be executed when IndexSearcher is being reloaded
 * Retrieve per-document term vectors (terms and frequencies) via `TermFreqVectorDocumentMapper<T>` for fields indexed with `TermVector = TermVectorMode.Yes`
 
-## Available on NuGet Gallery
-
-To install the [Iciclecreek.Lucene.Net.Linq package](http://nuget.org/packages/Iciclecreek.Lucene.Net.Linq),
-run the following command in the [Package Manager Console](http://docs.nuget.org/docs/start-here/using-the-package-manager-console)
-
-    PM> Install-Package Iciclecreek.Lucene.Net.Linq
-
 ## Examples
 
 1. Using [fluent syntax](source/Lucene.Net.Linq.Tests/Samples/FluentConfiguration.cs) to configure mappings
 1. Using [attributes](source/Lucene.Net.Linq.Tests/Samples/AttributeConfiguration.cs) to configure mappings
 1. Specifying [document keys](source/Lucene.Net.Linq.Tests/Samples/DocumentKeys.cs)
 
-## Upgrading from Lucene.Net.Linq 3.x
-
-`Iciclecreek.Lucene.Net.Linq` 4.x is source-compatible for the most common usage
-shape — annotated POCOs, `LuceneDataProvider`, `OpenSession`, LINQ
-queries — but the underlying Lucene 3 → 4.8 jump forces a few changes.
-
-**Index files are not compatible.** Lucene 4.x cannot read 3.x segments
-at all. Plan to reindex from your source of truth, or run a one-time
-upgrade through Lucene's `IndexUpgrader` 3 → 4 path before swapping
-libraries. Run reindexing in a separate utility against an empty
-directory; do not point the new library at an old index.
-
-**Step-by-step:**
-
-1. Replace the package reference:
-   ```xml
-   <PackageReference Include="Iciclecreek.Lucene.Net.Linq" Version="4.8.0-beta00017" />
-   ```
-   The package id changed from `Lucene.Net.Linq` to `Iciclecreek.Lucene.Net.Linq`
-   to disambiguate this fork from the dormant original.
-
-2. Retarget. The library is `netstandard2.0;net8.0`. .NET Framework 4.8
-   consumers are supported via netstandard2.0; net40–net46 consumers are
-   not.
-
-3. Update your `LuceneVersion` constants. Replace
-   `Lucene.Net.Util.Version.LUCENE_30` with
-   `Lucene.Net.Util.LuceneVersion.LUCENE_48` everywhere. The type was
-   renamed in Lucene.Net 4.8.
-
-4. Fix any direct `Lucene.Net.*` usage. The bulk of the porting effort
-   is in the underlying Lucene 3 → 4.8 namespace and API churn, not in
-   this library:
-   - `Lucene.Net.QueryParsers` → `Lucene.Net.QueryParsers.Classic`
-   - `Lucene.Net.Analysis.Standard.StandardAnalyzer` now lives in
-     `Lucene.Net.Analysis.Standard`; many tokenizers moved into
-     `Lucene.Net.Analysis.Core`.
-   - `Field` constructors now take a `FieldType` instead of separate
-     `Store`/`Index`/`TermVector` enums. The library still accepts
-     `StoreMode` / `IndexMode` / `TermVectorMode` on `[Field]`; only
-     direct `new Field(...)` callers need to change.
-   - `IndexWriter` now requires an `IndexWriterConfig`:
-     ```csharp
-     var config = new IndexWriterConfig(LuceneVersion.LUCENE_48, analyzer);
-     var writer = new IndexWriter(directory, config);
-     ```
-   - `IndexReader.Open` → `DirectoryReader.Open`. Most session code
-     doesn't touch this directly.
-
-5. Remove `[DocumentBoost]` attributes and any code that sets
-   `Document.Boost`. Document-level boost is gone in Lucene 4.8. If
-   you depended on it, fold the boost into a field boost on a
-   discriminator field, or apply it via a `CustomScoreQuery`.
-
-6. Drop any boost set on `[NumericField]`. It's silently ignored
-   because numeric fields don't index norms in 4.8.
-
-7. If you wrote a `MergePolicyBuilder`, change its signature from
-   the old delegate to `Func<MergePolicy>` and return the policy
-   instance directly. The library installs it on the
-   `IndexWriterConfig` before constructing the writer.
-
-8. If you sort by a value-type property without `[NumericField]`
-   (e.g. a plain `int` or `DateTime`), be aware that 4.8 will sort
-   it lexicographically by string form. Add `[NumericField]` for
-   true numeric ordering, or accept the string sort if it happens
-   to match (e.g. ISO-8601 `DateTime` strings).
-
-9. Replace `Common.Logging` wiring with
-   `Microsoft.Extensions.Logging`:
-   ```csharp
-   Lucene.Net.Linq.Util.Logging.LoggerFactory = myLoggerFactory;
-   ```
-   Defaults to `NullLoggerFactory` if you don't set one.
-
-10. (Optional) Opt into DocValues on hot sort fields by adding
-    `DocValues = true` to `[Field]` / `[NumericField]` attributes
-    on properties you `OrderBy` heavily.
-
-## Mapping objects to documents
+## Mapping objects <=> documents
 
 Iciclecreek.Lucene.Net.Linq maps plain CLR objects (POCOs) onto Lucene
 `Document`s. You can describe the mapping in two ways: with attributes
@@ -375,6 +300,102 @@ at translation time with a clear message.
 | `Min` / `Max` | `Sort` ascending/descending + `Take(1)` |
 | `Select(d => new { ... })` | Document projection (read only the fields you reference) |
 
+### Collection Contains ("IN" queries)
+
+The LINQ `collection.Contains(field)` pattern translates to an efficient
+`TermsFilter` -- a single-pass filter that matches documents whose field
+value appears in the collection. This is the Lucene equivalent of SQL's
+`IN` operator.
+
+```csharp
+var allowedCategories = new[] { "tech", "science", "health" };
+
+var articles = provider.AsQueryable<Article>()
+    .Where(a => allowedCategories.Contains(a.Category))
+    .ToList();
+```
+
+This produces `ConstantScoreQuery(TermsFilter([Category:tech, Category:science, Category:health]))` -- much more efficient than chaining
+`||` equality checks, especially for large collections. Works with
+arrays, lists, and any `IEnumerable<T>`, including captured variables.
+
+You can combine it with other predicates:
+
+```csharp
+var results = provider.AsQueryable<Article>()
+    .Where(a => allowedCategories.Contains(a.Category) && a.WordCount > 500)
+    .ToList();
+```
+
+An empty collection matches nothing (returns zero results).
+
+### Joins
+
+LINQ `join` syntax works across document types. The library materializes
+both sides via separate Lucene searches and joins them in memory. A
+semi-join optimization uses `TermsFilter` to push the outer key values
+into the inner query, so only matching inner documents are fetched.
+
+```csharp
+var articles = provider.AsQueryable<Article>();
+var authors  = provider.AsQueryable<Author>();
+
+// Single join
+var results = (
+    from article in articles
+    join author in authors on article.AuthorId equals author.Username
+    select new { article.Title, author.DisplayName }
+).ToList();
+```
+
+Multiple joins chain naturally:
+
+```csharp
+var categories = provider.AsQueryable<Category>();
+
+var results = (
+    from article in articles
+    join author in authors on article.AuthorId equals author.Username
+    join category in categories on article.CategoryId equals category.Id
+    select new { article.Title, author.DisplayName, category.Label }
+).ToList();
+```
+
+Where clauses on the outer side are pushed into Lucene before the join:
+
+```csharp
+var results = (
+    from article in articles.Where(a => a.Title.Contains("lucene"))
+    join author in authors on article.AuthorId equals author.Username
+    select new { article.Title, author.DisplayName }
+).ToList();
+```
+
+Method syntax also works:
+
+```csharp
+var results = provider.AsQueryable<Article>()
+    .Join(
+        provider.AsQueryable<Author>(),
+        article => article.AuthorId,
+        author => author.Username,
+        (article, author) => new { article.Title, author.DisplayName })
+    .ToList();
+```
+
+**How it works under the hood:**
+
+1. The outer query executes as a normal Lucene search.
+2. Distinct join key values are extracted from the outer results.
+3. A `TermsFilter` is built from those keys and pushed into the inner
+   query -- only inner documents matching an outer key are fetched.
+4. Both materialized sides are joined in memory via `Enumerable.Join`.
+
+This means joins are efficient when the outer result set is selective
+(few distinct keys), but will materialize both sides for broad queries.
+Lucene has no relational join engine -- this is a convenience that
+avoids manual materialization and in-memory joining in user code.
+
 ### Parsed string queries
 
 For the cases where you need raw Lucene query syntax — wildcards,
@@ -601,3 +622,91 @@ removed or substantially reworked between 3.0.3 and 4.8:
   delegate signature that received the live `IndexWriter` no longer
   fits.
 
+## Upgrading from Lucene.Net.Linq 3.x
+
+`Iciclecreek.Lucene.Net.Linq` 4.x is source-compatible for the most common usage
+shape — annotated POCOs, `LuceneDataProvider`, `OpenSession`, LINQ
+queries — but the underlying Lucene 3 → 4.8 jump forces a few changes.
+
+**Index files are not compatible.** Lucene 4.x cannot read 3.x segments
+at all. Plan to reindex from your source of truth, or run a one-time
+upgrade through Lucene's `IndexUpgrader` 3 → 4 path before swapping
+libraries. Run reindexing in a separate utility against an empty
+directory; do not point the new library at an old index.
+
+**Step-by-step:**
+
+1. Replace the package reference:
+
+   ```xml
+   <PackageReference Include="Iciclecreek.Lucene.Net.Linq" Version="4.8.0-beta00017" />
+   ```
+
+   The package id changed from `Lucene.Net.Linq` to `Iciclecreek.Lucene.Net.Linq`
+   to disambiguate this fork from the dormant original.
+
+2. Retarget. The library is `netstandard2.0;net8.0`. .NET Framework 4.8
+   consumers are supported via netstandard2.0; net40–net46 consumers are
+   not.
+
+3. Update your `LuceneVersion` constants. Replace
+   `Lucene.Net.Util.Version.LUCENE_30` with
+   `Lucene.Net.Util.LuceneVersion.LUCENE_48` everywhere. The type was
+   renamed in Lucene.Net 4.8.
+
+4. Fix any direct `Lucene.Net.*` usage. The bulk of the porting effort
+   is in the underlying Lucene 3 → 4.8 namespace and API churn, not in
+   this library:
+
+   - `Lucene.Net.QueryParsers` → `Lucene.Net.QueryParsers.Classic`
+
+   - `Lucene.Net.Analysis.Standard.StandardAnalyzer` now lives in
+     `Lucene.Net.Analysis.Standard`; many tokenizers moved into
+     `Lucene.Net.Analysis.Core`.
+
+   - `Field` constructors now take a `FieldType` instead of separate
+     `Store`/`Index`/`TermVector` enums. The library still accepts
+     `StoreMode` / `IndexMode` / `TermVectorMode` on `[Field]`; only
+     direct `new Field(...)` callers need to change.
+
+   - `IndexWriter` now requires an `IndexWriterConfig`:
+
+     ```csharp
+     var config = new IndexWriterConfig(LuceneVersion.LUCENE_48, analyzer);
+     var writer = new IndexWriter(directory, config);
+     ```
+
+   - `IndexReader.Open` → `DirectoryReader.Open`. Most session code
+     doesn't touch this directly.
+
+5. Remove `[DocumentBoost]` attributes and any code that sets
+   `Document.Boost`. Document-level boost is gone in Lucene 4.8. If
+   you depended on it, fold the boost into a field boost on a
+   discriminator field, or apply it via a `CustomScoreQuery`.
+
+6. Drop any boost set on `[NumericField]`. It's silently ignored
+   because numeric fields don't index norms in 4.8.
+
+7. If you wrote a `MergePolicyBuilder`, change its signature from
+   the old delegate to `Func<MergePolicy>` and return the policy
+   instance directly. The library installs it on the
+   `IndexWriterConfig` before constructing the writer.
+
+8. If you sort by a value-type property without `[NumericField]`
+   (e.g. a plain `int` or `DateTime`), be aware that 4.8 will sort
+   it lexicographically by string form. Add `[NumericField]` for
+   true numeric ordering, or accept the string sort if it happens
+   to match (e.g. ISO-8601 `DateTime` strings).
+
+9. Replace `Common.Logging` wiring with
+   `Microsoft.Extensions.Logging`:
+
+   ```csharp
+   Lucene.Net.Linq.Util.Logging.LoggerFactory = myLoggerFactory;
+   ```
+
+   Defaults to `NullLoggerFactory` if you don't set one.
+
+10. (Optional) Opt into DocValues on hot sort fields by adding
+    `DocValues = true` to `[Field]` / `[NumericField]` attributes
+    on properties you `OrderBy` heavily.
