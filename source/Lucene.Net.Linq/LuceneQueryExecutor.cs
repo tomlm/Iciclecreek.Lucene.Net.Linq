@@ -537,9 +537,14 @@ namespace Lucene.Net.Linq
 
                 if (vectorClause != null && filterClauses != null)
                 {
-                    // Hybrid: filter first, then rank by vector similarity.
-                    return new Search.Function.VectorSimilarityScoreQuery(
-                        filterClauses, vectorClause.Field, vectorClause.QueryVector);
+                    // Hybrid: compose vector query with filter clauses in a BooleanQuery.
+                    var vectorFieldInfo = LookupVectorFieldInfo(vectorClause.Field);
+                    var resolvedVector = vectorClause.Resolve(reader, maxResults, vectorFieldInfo);
+                    var hybrid = new BooleanQuery();
+                    hybrid.Add(resolvedVector, Occur.MUST);
+                    foreach (var fc in filterClauses.GetClauses())
+                        hybrid.Add(fc);
+                    return hybrid;
                 }
 
                 // No hybrid — recurse into nested BooleanQueries

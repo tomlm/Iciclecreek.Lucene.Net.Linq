@@ -1,13 +1,11 @@
-#if NET10_0
+#if NET8_0_OR_GREATER
 using ElBruno.LocalEmbeddings;
 using ElBruno.LocalEmbeddings.Options;
 #endif
-using Lucene.Net.Analysis;
 using Lucene.Net.Analysis.Core;
 using Lucene.Net.Analysis.Standard;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Mapping;
-using Microsoft.Extensions.AI;
 using NUnit.Framework;
 using System;
 using Version = Lucene.Net.Util.LuceneVersion;

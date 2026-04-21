@@ -32,7 +32,7 @@
     <PackageReference Include="ElBruno.LocalEmbeddings" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+  <ItemGroup>
     <PackageReference Include="Iciclecreek.Lucene.Net.Vector" />
   </ItemGroup>
 
