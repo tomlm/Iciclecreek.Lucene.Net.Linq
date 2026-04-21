@@ -1,17 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Lucene.Net.Linq.Mapping;
 using Microsoft.Extensions.AI;
 using NUnit.Framework;
-using System.Reflection.Emit;
 
 #if NET8_0_OR_GREATER
 using ElBruno.LocalEmbeddings;
 using ElBruno.LocalEmbeddings.Options;
-using Lucene.Net.Analysis.Standard;
 #endif
 
 namespace Lucene.Net.Linq.Tests.Integration
