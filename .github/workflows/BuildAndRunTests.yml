@@ -29,7 +29,7 @@ jobs:
       run: dotnet restore Lucene.Net.Linq.sln
 
     - name: Build
-      run: dotnet build --no-restore Lucene.Net.Linq.sln --property WarningLevel=0 --framework net8.0
+      run: dotnet build --no-restore Lucene.Net.Linq.sln --property WarningLevel=0 
 
     - name: Test 8.0
       run: dotnet test --no-build --verbosity normal source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --framework net8.0
