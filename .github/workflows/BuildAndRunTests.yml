@@ -33,5 +33,6 @@ jobs:
 
     - name: Test 8.0
       run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --target net8.0
-      
-    - name: Test 10.0      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --target net10.0
+
+    - name: Test 10.0
+      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --target net10.0
