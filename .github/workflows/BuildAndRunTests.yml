@@ -32,7 +32,7 @@ jobs:
       run: dotnet build --no-restore Lucene.Net.Linq.sln --property WarningLevel=0 --framework net8.0
 
     - name: Test 8.0
-      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --target net8.0
+      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --framework net8.0
 
     - name: Test 10.0
-      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --target net10.0
+      run: dotnet test --no-build --verbosity normal --framework net8.0 source/Lucene.Net.Linq.Tests/Lucene.Net.Linq.Tests.csproj --framework net10.0
