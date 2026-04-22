@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
@@ -13,7 +13,7 @@
     <!-- Package metadata (moved from .nuspec) -->
     <IsPackable>true</IsPackable>
     <PackageId>Iciclecreek.Lucene.Net.Linq</PackageId>
-    <Version>4.8.2-beta00017</Version>
+    <Version>4.8.3-beta00017</Version>
     <Title>Iciclecreek.Lucene.Net.Linq</Title>
     <Authors>Chris Eldredge/Tom Laird-McConnell</Authors>
     <Owners>The Motley Fool, LLC</Owners>
