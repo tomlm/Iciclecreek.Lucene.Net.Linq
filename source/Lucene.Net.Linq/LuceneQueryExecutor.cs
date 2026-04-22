@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
+using Iciclecreek.Lucene.Net.Vector;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Mapping;
@@ -537,14 +538,9 @@ namespace Lucene.Net.Linq
 
                 if (vectorClause != null && filterClauses != null)
                 {
-                    // Hybrid: compose vector query with filter clauses in a BooleanQuery.
-                    var vectorFieldInfo = LookupVectorFieldInfo(vectorClause.Field);
-                    var resolvedVector = vectorClause.Resolve(reader, maxResults, vectorFieldInfo);
-                    var hybrid = new BooleanQuery();
-                    hybrid.Add(resolvedVector, Occur.MUST);
-                    foreach (var fc in filterClauses.GetClauses())
-                        hybrid.Add(fc);
-                    return hybrid;
+                    // Hybrid: filter drives the match set, cosine similarity drives ranking.
+                    return new VectorScoreQuery(
+                        filterClauses, vectorClause.Field, vectorClause.QueryVector);
                 }
 
                 // No hybrid — recurse into nested BooleanQueries

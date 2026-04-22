@@ -32,7 +32,7 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             {
                 // The field should now be a LuceneQueryFieldExpression
                 // (transformed by QuerySourceReferencePropertyTransformingVisitor)
-                if (inExpr.Field is LuceneQueryFieldExpression queryField)
+                if (inExpr.FieldExpression is LuceneQueryFieldExpression queryField)
                 {
                     return BuildTermsFilter(queryField.FieldName, inExpr.Values);
                 }

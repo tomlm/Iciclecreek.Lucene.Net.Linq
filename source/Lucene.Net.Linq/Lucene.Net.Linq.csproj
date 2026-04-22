@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net48;net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -21,6 +21,7 @@
     <Description>Port of Lucene.Net.Linq to .NET core and Lucene 4.x. Execute LINQ queries on Lucene.Net complete with object to Document mapping</Description>
     <PackageTags>lucene.net lucene linq odata search nosql</PackageTags>
     <PackageProjectUrl>https://github.com/tomlm/Iciclecreek.Lucene.Net.Linq</PackageProjectUrl>
+    <PackageIcon>Icon.png</PackageIcon>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageReleaseNotes>See https://github.com/tomlm/Iciclecreek.Lucene.Net.Linq/releases</PackageReleaseNotes>
     <RepositoryUrl>https://github.com/tomlm/Iciclecreek.Lucene.Net.Linq</RepositoryUrl>
@@ -31,6 +32,7 @@
   <ItemGroup>
     <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\Icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

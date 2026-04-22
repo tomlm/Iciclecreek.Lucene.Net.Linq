@@ -1,3 +1,6 @@
+[![Build and Test](https://github.com/tomlm/Iciclecreek.Lucene.Net.Linq/actions/workflows/BuildAndRunTests.yml/badge.svg)](https://github.com/tomlm/Iciclecreek.Lucene.Net.Linq/actions/workflows/BuildAndRunTests.yml)
+[![NuGet](https://img.shields.io/nuget/v/Iciclecreek.Lucene.Net.Linq.svg)](https://www.nuget.org/packages/Iciclecreek.Lucene.Net.Linq)
+
 ## LINQ to Lucene Modernized for Lucene.Net 4.8 and .NET 8+
 
 Iciclecreek.Lucene.Net.Linq is a .NET library that enables LINQ queries to run natively on a Lucene.Net index.
@@ -13,7 +16,7 @@ run the following command in the [Package Manager Console](http://docs.nuget.org
 
 This branch ports the Lucene.Net.Linq library from the original `Lucene.Net.Linq 3.0.3` /
 `net40` baseline onto `Lucene.Net 4.8.0-beta00017` and SDK-style projects
-multi-targeting `netstandard2.0;net8.0`. Highlights:
+multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 
 - **Lucene.Net 4.8.0-beta00017** for the index, query, analysis, and
   query-parser packages.
@@ -26,8 +29,8 @@ multi-targeting `netstandard2.0;net8.0`. Highlights:
 ### New 4.x features
 
 - **Vector similarity search** via `.Similar()` with automatic embedding at index and query time
-- **Multi-targeting**: the library builds for `netstandard2.0` and
-  `net8.0`/'net10.0'; 
+- **Multi-targeting**: the library builds for `netstandard2.0`, `net8.0`,
+  and `net10.0`; 
 - **Polymorphic select** - searching for a base type always properly instantiated object types of the original type.
 - **JOIN** LINQ join support utilizes search index to query across document types 
 - **DocValues opt-in** (`[Field(DocValues = true)]` /
@@ -298,7 +301,7 @@ at translation time with a clear message.
 | `Any()` / `Any(predicate)` | `TotalHits > 0` |
 | `Count()` / `LongCount()` | `TotalHits` |
 | `Min` / `Max` | `Sort` ascending/descending + `Take(1)` |
-| `Where(d => d.Field.Similar("text"))` | `KnnVectorQuery`/`CosineSimulatoryScoreQuery` |
+| `Where(d => d.Field.Similar("text"))` | `VectorQuery` (KNN or cosine similarity) |
 | `Select(d => new { ... })` | Document projection (read only the fields you reference) |
 
 ### Collection Contains ("IN" queries)
@@ -537,7 +540,7 @@ don't set one.
 
 The library supports vector similarity search. String properties can
 opt in via `[VectorField]` or the fluent `.AsVectorField()` API. Embeddings
-are automatiocally computed at index time and ranked by similarity at
+are automatically computed at index time and ranked by similarity at
 query time using `.Similar()`.
 
 ### Configuring an embedding generator
@@ -725,7 +728,7 @@ directory; do not point the new library at an old index.
    The package id changed from `Lucene.Net.Linq` to `Iciclecreek.Lucene.Net.Linq`
    to disambiguate this fork from the dormant original.
 
-2. Retarget. The library is `netstandard2.0;net8.0`. .NET Framework 4.8
+2. Retarget. The library is `netstandard2.0;net8.0;net10.0`. .NET Framework 4.6.1+
    consumers are supported via netstandard2.0; net40–net46 consumers are
    not.
 

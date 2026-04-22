@@ -81,12 +81,12 @@ namespace Lucene.Net.Linq.Transformation.Visitors
     /// </summary>
     internal class InCollectionExpression : Expression
     {
-        public Expression Field { get; }
+        public Expression FieldExpression { get; }
         public IEnumerable Values { get; }
 
         internal InCollectionExpression(Expression field, IEnumerable values)
         {
-            Field = field;
+            FieldExpression = field;
             Values = values;
         }
 
@@ -96,8 +96,8 @@ namespace Lucene.Net.Linq.Transformation.Visitors
 
         protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
-            var newField = visitor.Visit(Field);
-            if (newField != Field)
+            var newField = visitor.Visit(FieldExpression);
+            if (newField != FieldExpression)
                 return new InCollectionExpression(newField, Values);
             return this;
         }
