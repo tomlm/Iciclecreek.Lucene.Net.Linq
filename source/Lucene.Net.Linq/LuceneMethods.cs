@@ -137,6 +137,31 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
+        /// Executes a Lucene query string against the
+        /// <see cref="Mapping.IFieldMappingInfoProvider.DefaultSearchProperty"/>.
+        /// Supports full Lucene query syntax including wildcards, boolean
+        /// operators, phrase queries and field-specific terms.
+        /// </summary>
+        /// <param name="obj">The mapped document (targets the default search property).</param>
+        /// <param name="queryText">A Lucene query string (e.g. <c>"kitten* OR dog*"</c>).</param>
+        public static bool Query<T>(this T obj, string queryText)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
+        /// Executes a Lucene query string against a specific string property.
+        /// Supports full Lucene query syntax including wildcards, boolean
+        /// operators, phrase queries and ranges.
+        /// </summary>
+        /// <param name="property">The string property to query.</param>
+        /// <param name="queryText">A Lucene query string (e.g. <c>"kitten*"</c>).</param>
+        public static bool Query(this string property, string queryText)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
         /// Performs vector similarity search on a string property that has been
         /// configured with <see cref="Mapping.VectorFieldAttribute"/> or via the
         /// fluent <c>AsVectorField()</c> API. The <paramref name="queryText"/> is

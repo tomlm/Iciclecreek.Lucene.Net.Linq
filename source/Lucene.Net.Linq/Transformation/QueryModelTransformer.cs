@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Lucene.Net.Analysis;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Lucene.Net.Linq.Transformation.Visitors;
 using Lucene.Net.Linq.Util;
@@ -69,12 +70,14 @@ namespace Lucene.Net.Linq.Transformation
 
         public static void TransformQueryModel(QueryModel queryModel,
             IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-            string defaultSearchProperty = null)
+            string defaultSearchProperty = null,
+            Analyzer analyzer = null)
         {
             var visitors = new LuceneExpressionVisitor[]
             {
                 new SubQueryContainsVisitor(),
                 new LuceneExtensionMethodCallVisitor(),
+                new QueryMethodCallVisitor(analyzer, defaultSearchProperty),
                 new SimilarMethodCallVisitor(embeddingGenerator, defaultSearchProperty),
                 new ExternallyProvidedQueryExpressionVisitor(),
                 new QuerySourceReferencePropertyTransformingVisitor(),

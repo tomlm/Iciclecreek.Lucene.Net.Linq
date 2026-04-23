@@ -484,6 +484,50 @@ namespace Lucene.Net.Linq.Tests.Integration
             var ids = results.Select(r => r.Id).OrderBy(id => id).ToList();
             Assert.That(ids, Is.EquivalentTo(new[] { "1", "2" }));
         }
+
+        [Test]
+        public void Query_ObjectLevel_InLinqExpression()
+        {
+            // t.Query("kitten*") should parse against the default search
+            // property (Content) and combine with other LINQ predicates.
+            var results = Documents
+                .Where(d => d.Query("kitten*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Query_ObjectLevel_BooleanSyntax()
+        {
+            var results = Documents
+                .Where(d => d.Query("kitten* OR dog*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(2));
+            Assert.That(results.Select(r => r.Id), Is.EquivalentTo(new[] { "1", "2" }));
+        }
+
+        [Test]
+        public void Query_ObjectLevel_CombinedWithLinqFilter()
+        {
+            // Lucene query + LINQ predicate in same expression
+            var results = Documents
+                .Where(d => d.Query("kitten* OR dog*") && d.Id == "2")
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Query_PropertyLevel()
+        {
+            // Query against a specific property rather than the default
+            var results = Documents
+                .Where(d => d.Title.Query("kitten*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
     }
 
     [TestFixture]
