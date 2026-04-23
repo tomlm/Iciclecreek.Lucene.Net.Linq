@@ -9,7 +9,7 @@ using Microsoft.Extensions.AI;
 namespace Lucene.Net.Linq.Mapping
 {
     /// <summary>
-    /// Wraps an inner <see cref="ReflectionFieldMapper{T}"/> for a string property
+    /// Wraps an inner <see cref="IFieldMapper{T}"/> for a string property
     /// and adds a companion <c>BinaryDocValuesField</c> that stores the vector embedding.
     /// The vector field is named <c>{FieldName}_vector</c>.
     /// </summary>
