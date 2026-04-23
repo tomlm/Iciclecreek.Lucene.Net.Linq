@@ -98,6 +98,8 @@ namespace Lucene.Net.Linq
         {
             mapper.PrepareSearchSettings(context);
         }
+
+        public override string DefaultSearchProperty => mapper.DefaultSearchProperty;
     }
 
     internal abstract class LuceneQueryExecutorBase<TDocument> : IQueryExecutor, IFieldMappingInfoProvider
@@ -487,7 +489,7 @@ namespace Lucene.Net.Linq
 
         private LuceneQueryModel PrepareQuery(QueryModel queryModel)
         {
-            QueryModelTransformer.TransformQueryModel(queryModel, context.Settings.EmbeddingGenerator);
+            QueryModelTransformer.TransformQueryModel(queryModel, context.Settings.EmbeddingGenerator, DefaultSearchProperty);
 
             var builder = new QueryModelTranslator(this, context);
             builder.Build(queryModel);
@@ -584,5 +586,6 @@ namespace Lucene.Net.Linq
         protected abstract TDocument ConvertDocument(Document doc, IQueryExecutionContext context);
         protected abstract TDocument ConvertDocumentForCustomBoost(Document doc);
         protected abstract void PrepareSearchSettings(IQueryExecutionContext context);
+        public virtual string DefaultSearchProperty => null;
     }
 }

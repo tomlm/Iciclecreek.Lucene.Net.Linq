@@ -68,13 +68,14 @@ namespace Lucene.Net.Linq.Transformation
         }
 
         public static void TransformQueryModel(QueryModel queryModel,
-            IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+            IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+            string defaultSearchProperty = null)
         {
             var visitors = new LuceneExpressionVisitor[]
             {
                 new SubQueryContainsVisitor(),
                 new LuceneExtensionMethodCallVisitor(),
-                new SimilarMethodCallVisitor(embeddingGenerator),
+                new SimilarMethodCallVisitor(embeddingGenerator, defaultSearchProperty),
                 new ExternallyProvidedQueryExpressionVisitor(),
                 new QuerySourceReferencePropertyTransformingVisitor(),
                 new BoostMethodCallVisitor(0),

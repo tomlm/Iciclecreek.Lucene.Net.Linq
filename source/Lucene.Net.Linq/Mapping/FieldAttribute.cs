@@ -62,6 +62,15 @@ namespace Lucene.Net.Linq.Mapping
         public bool Key { get; set; }
 
         /// <summary>
+        /// When <c>true</c>, marks this property as the default search property
+        /// for queries that don't specify a field. Used by
+        /// <see cref="LuceneMethods.Similar{T}(T, string)"/> and
+        /// <see cref="FieldMappingQueryParser{T}"/>. Only one property per type
+        /// should be marked as default.
+        /// </summary>
+        public bool Default { get; set; }
+
+        /// <summary>
         /// Specifies a boost to apply when a document is being analyzed during indexing.
         /// Defaults to <c>1.0f</c>.
         /// </summary>

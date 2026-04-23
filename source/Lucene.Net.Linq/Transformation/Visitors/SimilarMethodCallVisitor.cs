@@ -21,20 +21,15 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             typeof(LuceneMethods).GetMethods()
                 .First(m => m.Name == "Similar" && m.IsGenericMethod);
 
-        /// <summary>
-        /// The default content field name used when Similar() is called on the
-        /// document object rather than on a specific string property.
-        /// Consumers (e.g. LottaDB) can set this to match their content field name.
-        /// </summary>
-        public static string DefaultContentField { get; set; } = "_content_";
-
         private readonly IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
+        private readonly string defaultSearchProperty;
 
-        internal SimilarMethodCallVisitor(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        internal SimilarMethodCallVisitor(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string defaultSearchProperty = null)
         {
             AddMethod(SimilarStringMethod);
             AddMethod(SimilarObjectMethod);
             this.embeddingGenerator = embeddingGenerator;
+            this.defaultSearchProperty = defaultSearchProperty;
         }
 
         protected override Expression VisitSupportedMethodCallExpression(MethodCallExpression expression)
@@ -50,8 +45,11 @@ namespace Lucene.Net.Linq.Transformation.Visitors
 
             if (expression.Method.IsGenericMethod)
             {
-                // Object-level: LuceneMethods.Similar<T>(obj, queryText) → content field
-                fieldName = DefaultContentField;
+                // Object-level: LuceneMethods.Similar<T>(obj, queryText) → default search property
+                fieldName = defaultSearchProperty
+                    ?? throw new InvalidOperationException(
+                        "Cannot use Similar<T>(obj, queryText) without a default search property. " +
+                        "Either call Similar on a specific string property, or ensure the mapped type has a key or indexed property.");
                 queryText = EvaluateExpression<string>(expression.Arguments[1]);
             }
             else
