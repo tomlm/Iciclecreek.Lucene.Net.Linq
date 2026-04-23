@@ -137,6 +137,31 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
+        /// Executes a Lucene query string against the
+        /// <see cref="Mapping.IFieldMappingInfoProvider.DefaultSearchProperty"/>.
+        /// Supports full Lucene query syntax including wildcards, boolean
+        /// operators, phrase queries and field-specific terms.
+        /// </summary>
+        /// <param name="obj">The mapped document (targets the default search property).</param>
+        /// <param name="queryText">A Lucene query string (e.g. <c>"kitten* OR dog*"</c>).</param>
+        public static bool Query<T>(this T obj, string queryText)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
+        /// Executes a Lucene query string against a specific string property.
+        /// Supports full Lucene query syntax including wildcards, boolean
+        /// operators, phrase queries and ranges.
+        /// </summary>
+        /// <param name="property">The string property to query.</param>
+        /// <param name="queryText">A Lucene query string (e.g. <c>"kitten*"</c>).</param>
+        public static bool Query(this string property, string queryText)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
         /// Performs vector similarity search on a string property that has been
         /// configured with <see cref="Mapping.VectorFieldAttribute"/> or via the
         /// fluent <c>AsVectorField()</c> API. The <paramref name="queryText"/> is
@@ -146,6 +171,18 @@ namespace Lucene.Net.Linq
         /// <param name="property">The string property to search (must have a vector field configured).</param>
         /// <param name="queryText">The text to embed and search for similar documents.</param>
         public static bool Similar(this string property, string queryText)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
+        /// Performs vector similarity search against the default content field.
+        /// The <paramref name="queryText"/> is embedded at query time and a KNN
+        /// search is executed against the content vector index.
+        /// </summary>
+        /// <param name="obj">The mapped document (used to target the content field).</param>
+        /// <param name="queryText">The text to embed and search for similar documents.</param>
+        public static bool Similar<T>(this T obj, string queryText)
         {
             throw new InvalidOperationException(UnreachableCode);
         }

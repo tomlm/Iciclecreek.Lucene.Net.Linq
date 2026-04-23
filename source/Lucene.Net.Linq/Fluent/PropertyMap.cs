@@ -300,6 +300,14 @@ namespace Lucene.Net.Linq.Fluent
             {
                 this.isKey = copy.isKey;
                 this.fieldName = copy.fieldName ?? propInfo.Name;
+                this.converter = copy.converter;
+                this.analyzer = copy.analyzer;
+                this.indexMode = copy.indexMode;
+                this.store = copy.store;
+                this.boost = copy.boost;
+                this.caseSensitive = copy.caseSensitive;
+                this.defaultParseOperator = copy.defaultParseOperator;
+                this.nativeSort = copy.nativeSort;
                 return;
             }
 

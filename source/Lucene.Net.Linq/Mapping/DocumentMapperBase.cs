@@ -75,6 +75,14 @@ namespace Lucene.Net.Linq.Mapping
             get { return keyFields.Select(k => k.PropertyName); }
         }
 
+        private string defaultSearchProperty;
+
+        public virtual string DefaultSearchProperty
+        {
+            get { return defaultSearchProperty ?? KeyProperties.FirstOrDefault() ?? IndexedProperties.FirstOrDefault(); }
+            set { defaultSearchProperty = value; }
+        }
+
         protected virtual bool EnableScoreTracking
         {
             get { return fieldMap.Values.Any(m => m is ReflectionScoreMapper<T>); }

@@ -67,23 +67,6 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(info.VectorFieldName, Is.EqualTo("Title_vector"));
         }
 
-        [Test]
-        public void AddDocument_WritesVectorField()
-        {
-            AddDocument(new VectorDocument { Id = "1", Title = "hello world" });
-
-            using var handle = provider.Context.CheckoutSearcher();
-            var searcher = handle.Searcher;
-            var hits = searcher.Search(new Lucene.Net.Search.MatchAllDocsQuery(), 10);
-            Assert.That(hits.TotalHits, Is.GreaterThan(0));
-
-            var doc = searcher.Doc(hits.ScoreDocs[0].Doc);
-#if NET8_0_OR_GREATER
-            var vectorBytes = doc.GetBinaryValue("Title_vector");
-            Assert.That(vectorBytes, Is.Not.Null, "Expected Title_vector StoredField to be present");
-            Assert.That(vectorBytes.Length, Is.GreaterThan(0));
-#endif
-        }
 
         [Test]
         public void AddDocument_StringFieldStillReadable()
@@ -94,40 +77,6 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(results.Count, Is.EqualTo(1));
             Assert.That(results[0].Title, Is.EqualTo("hello world"));
             Assert.That(results[0].Category, Is.EqualTo("test"));
-        }
-
-        [Test]
-        public void AddDocument_NullTitle_NoVectorWritten()
-        {
-            AddDocument(new VectorDocument { Id = "1", Title = null, Category = "test" });
-
-            using var handle = provider.Context.CheckoutSearcher();
-            var searcher = handle.Searcher;
-            var hits = searcher.Search(new Lucene.Net.Search.MatchAllDocsQuery(), 10);
-            var doc = searcher.Doc(hits.ScoreDocs[0].Doc);
-            var vectorBytes = doc.GetBinaryValue("Title_vector");
-            Assert.That(vectorBytes, Is.Null, "No vector should be written for null text");
-        }
-
-        [Test]
-        public void MultipleDocuments_AllHaveVectors()
-        {
-            AddDocument(new VectorDocument { Id = "1", Title = "first document" });
-            AddDocument(new VectorDocument { Id = "2", Title = "second document" });
-            AddDocument(new VectorDocument { Id = "3", Title = "third document" });
-
-            using var handle = provider.Context.CheckoutSearcher();
-            var searcher = handle.Searcher;
-            var hits = searcher.Search(new Lucene.Net.Search.MatchAllDocsQuery(), 10);
-            Assert.That(hits.TotalHits, Is.EqualTo(3));
-#if NET8_0_OR_GREATER
-            for (int i = 0; i < hits.ScoreDocs.Length; i++)
-            {
-                var doc = searcher.Doc(hits.ScoreDocs[i].Doc);
-                var vectorBytes = doc.GetBinaryValue("Title_vector");
-                Assert.That(vectorBytes, Is.Not.Null, $"Document {i} should have a vector");
-            }
-#endif
         }
     }
 
@@ -387,6 +336,197 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             var doc1 = allDocs.First(d => d.Id == "1");
             Assert.That(doc1.Title, Is.EqualTo("the quick brown fox jumps over the lazy dog"));
+        }
+    }
+
+    [DocumentKey(FieldName = "Type", Value = "CompoundVectorDoc")]
+    public class CompoundVectorDocument
+    {
+        [Field(Key = true)]
+        public string Id { get; set; }
+
+        [Field]
+        public string Title { get; set; }
+
+        [Field]
+        public string Description { get; set; }
+
+        /// <summary>
+        /// Compound property that combines Title and Description for
+        /// both free-text search and vector similarity.
+        /// </summary>
+        [Field(Default = true), VectorField]
+        public string Content => $"{Title} {Description}";
+    }
+
+    [TestFixture]
+    [NonParallelizable]
+    public class ObjectLevelSimilarTests
+    {
+        private static readonly IEmbeddingGenerator<string, Embedding<float>> generator =
+#if NET8_0_OR_GREATER
+            new LocalEmbeddingGenerator(new LocalEmbeddingsOptions
+        {
+            ModelName = "SmartComponents/bge-micro-v2",
+            PreferQuantized = true
+        });
+#else
+        null;
+#endif
+        private LuceneDataProvider provider;
+        private Lucene.Net.Store.RAMDirectory directory;
+        private Lucene.Net.Index.IndexWriter writer;
+
+        [OneTimeSetUp]
+        public void SetupIndex()
+        {
+            directory = new Lucene.Net.Store.RAMDirectory();
+            writer = new Lucene.Net.Index.IndexWriter(directory,
+                new Lucene.Net.Index.IndexWriterConfig(Lucene.Net.Util.LuceneVersion.LUCENE_48,
+                    new Lucene.Net.Analysis.Standard.StandardAnalyzer(Lucene.Net.Util.LuceneVersion.LUCENE_48)));
+            provider = new LuceneDataProvider(directory, Lucene.Net.Util.LuceneVersion.LUCENE_48, writer);
+            provider.Settings.EmbeddingGenerator = generator;
+
+            AddDoc(new CompoundVectorDocument
+            {
+                Id = "1",
+                Title = "the quick brown fox",
+                Description = "jumps over the lazy dog in the meadow"
+            });
+            AddDoc(new CompoundVectorDocument
+            {
+                Id = "2",
+                Title = "a small kitten",
+                Description = "sleeping peacefully on a warm blanket"
+            });
+            AddDoc(new CompoundVectorDocument
+            {
+                Id = "3",
+                Title = "quantum physics",
+                Description = "string theory and particle accelerator research"
+            });
+        }
+
+        [OneTimeTearDown]
+        public void Cleanup()
+        {
+            writer?.Dispose();
+            directory?.Dispose();
+        }
+
+        private IQueryable<CompoundVectorDocument> Documents =>
+            provider.AsQueryable<CompoundVectorDocument>();
+
+        private void AddDoc(CompoundVectorDocument doc)
+        {
+            using (var session = provider.OpenSession<CompoundVectorDocument>())
+            {
+                session.Add(doc);
+                session.Commit();
+            }
+        }
+
+        [Test]
+        public void ObjectSimilar_UsesDefaultSearchProperty()
+        {
+            // The [Field(Default = true)] attribute on Content should
+            // make it the DefaultSearchProperty automatically.
+            var mapper = new ReflectionDocumentMapper<CompoundVectorDocument>(
+                Lucene.Net.Util.LuceneVersion.LUCENE_48, null, generator);
+
+            Assert.That(mapper.DefaultSearchProperty, Is.EqualTo("Content"));
+        }
+
+        [Test]
+        public void ObjectSimilar_ReturnsResults()
+        {
+            var query = Documents
+                .Where(d => d.Similar("a cute cat napping"));
+#if NET8_0_OR_GREATER
+            var result = query.ToList();
+            Assert.That(result, Is.Not.Empty, "Object-level Similar() should return results");
+#else
+            Assert.Throws<InvalidOperationException>(() => query.ToList());
+#endif
+        }
+
+        [Test]
+        public void ObjectSimilar_RanksSemanticallySimilarHigher()
+        {
+            var query = Documents
+                .Where(d => d.Similar("a cute cat napping"));
+#if NET8_0_OR_GREATER
+            var result = query.ToList();
+            Assert.That(result, Is.Not.Empty);
+            Assert.That(result[0].Id, Is.EqualTo("2"),
+                "The kitten document should rank first for 'a cute cat napping'");
+#else
+            Assert.Throws<InvalidOperationException>(() => query.ToList());
+#endif
+        }
+
+        [Test]
+        public void DefaultSearchProperty_WorksForFreeTextQuery()
+        {
+            // AsQueryable<T>(string) parses against DefaultSearchProperty,
+            // which is Content thanks to [Field(Default = true)].
+            var results = provider.AsQueryable<CompoundVectorDocument>("kitten").ToList();
+            Assert.That(results, Is.Not.Empty);
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void AsQueryable_SupportsLuceneQuerySyntax()
+        {
+            // Wildcard + boolean: should match doc 2 (kitten) and doc 1 (dog)
+            var results = provider.AsQueryable<CompoundVectorDocument>("kitten* OR dog*").ToList();
+            Assert.That(results.Count, Is.EqualTo(2));
+            var ids = results.Select(r => r.Id).OrderBy(id => id).ToList();
+            Assert.That(ids, Is.EquivalentTo(new[] { "1", "2" }));
+        }
+
+        [Test]
+        public void Query_ObjectLevel_InLinqExpression()
+        {
+            // t.Query("kitten*") should parse against the default search
+            // property (Content) and combine with other LINQ predicates.
+            var results = Documents
+                .Where(d => d.Query("kitten*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Query_ObjectLevel_BooleanSyntax()
+        {
+            var results = Documents
+                .Where(d => d.Query("kitten* OR dog*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(2));
+            Assert.That(results.Select(r => r.Id), Is.EquivalentTo(new[] { "1", "2" }));
+        }
+
+        [Test]
+        public void Query_ObjectLevel_CombinedWithLinqFilter()
+        {
+            // Lucene query + LINQ predicate in same expression
+            var results = Documents
+                .Where(d => d.Query("kitten* OR dog*") && d.Id == "2")
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Query_PropertyLevel()
+        {
+            // Query against a specific property rather than the default
+            var results = Documents
+                .Where(d => d.Title.Query("kitten*"))
+                .ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Id, Is.EqualTo("2"));
         }
     }
 

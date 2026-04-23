@@ -20,6 +20,7 @@ namespace Lucene.Net.Linq.Fluent
         private readonly ISet<PropertyMap<T>> properties = new HashSet<PropertyMap<T>>(new PartComparer());
         private readonly IDictionary<string, string> documentKeys = new Dictionary<string, string>(StringComparer.Ordinal);
         private ReflectionScoreMapper<T> scoreMapper;
+        private string defaultSearchProperty;
 
         public ClassMap(Version version)
         {
@@ -88,12 +89,31 @@ namespace Lucene.Net.Linq.Fluent
         }
 
         /// <summary>
+        /// Sets the default property for queries that don't specify which field
+        /// to search. Used by <see cref="LuceneMethods.Similar{T}(T, string)"/>
+        /// and by <see cref="FieldMappingQueryParser{T}"/> for free-text queries.
+        /// When not specified, defaults to the first key or first indexed property.
+        /// </summary>
+        public ClassMap<T> DefaultProperty(Expression<Func<T, object>> expression)
+        {
+            var propInfo = GetMemberInfo<PropertyInfo>(expression.Body);
+            defaultSearchProperty = propInfo.Name;
+            return this;
+        }
+
+        /// <summary>
         /// Converts the fluent specification into an <see cref="IDocumentMapper{T}"/>
         /// suitable for use with <see cref="LuceneDataProvider"/>.
         /// </summary>
         public IDocumentMapper<T> ToDocumentMapper()
         {
             var docMapper = new FluentDocumentMapper<T>(version);
+
+            if (defaultSearchProperty != null)
+            {
+                docMapper.DefaultSearchProperty = defaultSearchProperty;
+            }
+
             foreach (var p in properties)
             {
                 var fieldMapper = p.ToFieldMapper();

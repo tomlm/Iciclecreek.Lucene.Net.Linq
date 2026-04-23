@@ -163,8 +163,7 @@ namespace Lucene.Net.Linq
         public FieldMappingQueryParser<T> CreateQueryParser<T>()
         {
             var mapper = CreateReflectionMapper<T>();
-            var defaultSearchField = mapper.KeyProperties.FirstOrDefault() ?? mapper.IndexedProperties.FirstOrDefault();
-            return new FieldMappingQueryParser<T>(version, defaultSearchField, mapper);
+            return new FieldMappingQueryParser<T>(version, mapper.DefaultSearchProperty, mapper);
         }
 
         /// <summary>
@@ -183,6 +182,24 @@ namespace Lucene.Net.Linq
         {
             var mapper = CreateReflectionMapper<T>();
             return new FieldMappingQueryParser<T>(version, defaultSearchField, mapper);
+        }
+
+        /// <summary>
+        /// Returns an <see cref="IQueryable{T}"/> filtered by parsing
+        /// <paramref name="query"/> against the type's
+        /// <see cref="IFieldMappingInfoProvider.DefaultSearchProperty"/>.
+        /// This is a convenience shortcut for creating a query parser,
+        /// parsing the query string, and calling <c>AsQueryable().Where(parsed)</c>.
+        /// </summary>
+        /// <typeparam name="T">The type of document to query.</typeparam>
+        /// <param name="query">A Lucene query string
+        /// (e.g. <c>"kitten"</c> or <c>"title:fox AND category:animals"</c>).</param>
+        public IQueryable<T> AsQueryable<T>(string query) where T : new()
+        {
+            var mapper = CreateReflectionMapper<T>();
+            var parser = new FieldMappingQueryParser<T>(version, mapper.DefaultSearchProperty, mapper);
+            var parsed = parser.Parse(query);
+            return AsQueryable(() => new T(), mapper).Where(parsed);
         }
 
         /// <summary>

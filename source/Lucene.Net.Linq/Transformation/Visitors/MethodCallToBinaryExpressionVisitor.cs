@@ -30,7 +30,7 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             {
                 return new LuceneQueryPredicateExpression(queryField, expression.Arguments[0], Occur.MUST, QueryType.Wildcard);
             }
-            
+
             return base.VisitMethodCall(expression);
         }
     }

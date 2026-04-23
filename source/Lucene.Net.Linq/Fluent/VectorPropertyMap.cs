@@ -61,8 +61,7 @@ namespace Lucene.Net.Linq.Fluent
         protected internal override IFieldMapper<T> ToFieldMapper()
         {
             var inner = base.ToFieldMapperInternal();
-            var attr = new VectorFieldAttribute { K = k, M = m, EfSearch = efSearch };
-            return new VectorFieldMapper<T>(inner, propInfo, attr, embeddingGenerator);
+            return new VectorFieldMapper<T>(inner, embeddingGenerator, k, m, efSearch);
         }
     }
 }

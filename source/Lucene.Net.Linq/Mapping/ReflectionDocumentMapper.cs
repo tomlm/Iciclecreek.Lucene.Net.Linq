@@ -61,6 +61,8 @@ namespace Lucene.Net.Linq.Mapping
             BuildFieldMap(props, embeddingGenerator);
 
             BuildKeyFieldMap(type, props);
+
+            BuildDefaultSearchProperty(props);
         }
 
         private ReflectionDocumentMapper(Version version, Analyzer externalAnalyzer, Type type)
@@ -71,6 +73,8 @@ namespace Lucene.Net.Linq.Mapping
             BuildFieldMap(props);
 
             BuildKeyFieldMap(type, props);
+
+            BuildDefaultSearchProperty(props);
         }
 
         private void BuildFieldMap(IEnumerable<PropertyInfo> props,
@@ -124,6 +128,20 @@ namespace Lucene.Net.Linq.Mapping
             foreach (var attr in type.GetCustomAttributes<DocumentKeyAttribute>(true))
             {
                 AddKeyField(new DocumentKeyFieldMapper<T>(attr.FieldName, attr.Value));
+            }
+        }
+
+        private void BuildDefaultSearchProperty(IEnumerable<PropertyInfo> props)
+        {
+            var defaultProp = props.FirstOrDefault(p =>
+            {
+                var a = p.GetCustomAttribute<BaseFieldAttribute>(true);
+                return a != null && a.Default;
+            });
+
+            if (defaultProp != null)
+            {
+                DefaultSearchProperty = defaultProp.Name;
             }
         }
     }

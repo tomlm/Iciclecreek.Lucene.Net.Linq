@@ -33,8 +33,15 @@ namespace Lucene.Net.Linq.Mapping
         IEnumerable<string> IndexedProperties { get; }
 
         /// <summary>
+        /// The default property for queries that don't specify which field to search.
+        /// Used by <see cref="LuceneMethods.Similar{T}(T, string)"/> for object-level
+        /// vector similarity and by <see cref="FieldMappingQueryParser{T}"/> for free-text queries.
+        /// </summary>
+        string DefaultSearchProperty { get; }
+
+        /// <summary>
         /// Returns detailed mapping info for a given property name.
-        /// DefaultSearchProperty names are case sensitive.
+        /// Property names are case sensitive.
         /// </summary>
         /// <exception cref="KeyNotFoundException">if the property name is not found.</exception>
         IFieldMappingInfo GetMappingInfo(string propertyName);

@@ -1,6 +1,4 @@
-using System;
-using System.Reflection;
-using System.Threading.Tasks;
+using Iciclecreek.Lucene.Net.Vector;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
 using Lucene.Net.Linq.Search;
@@ -11,29 +9,30 @@ using Microsoft.Extensions.AI;
 namespace Lucene.Net.Linq.Mapping
 {
     /// <summary>
-    /// Wraps an inner <see cref="ReflectionFieldMapper{T}"/> for a string property
+    /// Wraps an inner <see cref="IFieldMapper{T}"/> for a string property
     /// and adds a companion <c>BinaryDocValuesField</c> that stores the vector embedding.
     /// The vector field is named <c>{FieldName}_vector</c>.
     /// </summary>
     public class VectorFieldMapper<T> : IFieldMapper<T>, IVectorFieldMappingInfo
     {
-        private readonly ReflectionFieldMapper<T> inner;
+        private readonly IFieldMapper<T> inner;
         private readonly IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
         private readonly int k;
         private readonly int m;
         private readonly int efSearch;
 
         public VectorFieldMapper(
-            ReflectionFieldMapper<T> inner,
-            PropertyInfo propertyInfo,
-            VectorFieldAttribute vectorAttr,
-            IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+            IFieldMapper<T> inner,
+            IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+            int k = 10,
+            int m = 16,
+            int efSearch = 50)
         {
             this.inner = inner;
             this.embeddingGenerator = embeddingGenerator;
-            this.k = vectorAttr.K;
-            this.m = vectorAttr.M;
-            this.efSearch = vectorAttr.EfSearch;
+            this.k = k;
+            this.m = m;
+            this.efSearch = efSearch;
         }
 
         /// <summary>
@@ -86,33 +85,18 @@ namespace Lucene.Net.Linq.Mapping
             var textValue = inner.GetPropertyValue(source) as string;
             if (textValue != null && embeddingGenerator != null)
             {
-                var vector = GenerateEmbedding(textValue);
-                if (vector != null)
+                var result = embeddingGenerator.GenerateAsync(new[] { textValue })
+                    .ConfigureAwait(false)
+                    .GetAwaiter()
+                    .GetResult();
+                if (result != null && result.Count > 0)
                 {
                     target.RemoveFields(VectorFieldName);
-                    var bytes = VectorToBytes(vector);
-                    target.Add(new BinaryDocValuesField(VectorFieldName, new BytesRef(bytes)));
-                    // Also store as StoredField so it can be retrieved from Document.
-                    target.Add(new StoredField(VectorFieldName, bytes));
+                    target.Add(new BinaryDocValuesField(
+                        VectorFieldName,
+                        VectorSerializer.ToBytesRef(result[0].Vector.Span)));
                 }
             }
-        }
-
-        private float[] GenerateEmbedding(string text)
-        {
-            var result = Task.Run(() => embeddingGenerator.GenerateAsync(new[] { text })).GetAwaiter().GetResult();
-            if (result != null && result.Count > 0)
-            {
-                return result[0].Vector.ToArray();
-            }
-            return null;
-        }
-
-        private static byte[] VectorToBytes(float[] vector)
-        {
-            var bytes = new byte[vector.Length * sizeof(float)];
-            Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
-            return bytes;
         }
     }
 }

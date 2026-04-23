@@ -53,7 +53,8 @@ namespace Lucene.Net.Linq.Mapping
 
             if (vectorFieldAttribute != null)
             {
-                return new VectorFieldMapper<T>(mapper, p, vectorFieldAttribute, embeddingGenerator);
+                return new VectorFieldMapper<T>(mapper, embeddingGenerator,
+                    vectorFieldAttribute.K, vectorFieldAttribute.M, vectorFieldAttribute.EfSearch);
             }
 
             return isCollection ? new CollectionReflectionFieldMapper<T>(mapper, type) : mapper;

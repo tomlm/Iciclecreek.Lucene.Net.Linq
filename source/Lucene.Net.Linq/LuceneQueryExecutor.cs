@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using Iciclecreek.Lucene.Net.Vector;
+using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Mapping;
@@ -98,6 +99,10 @@ namespace Lucene.Net.Linq
         {
             mapper.PrepareSearchSettings(context);
         }
+
+        public override string DefaultSearchProperty => mapper.DefaultSearchProperty;
+
+        protected override Analyzer MapperAnalyzer => mapper.Analyzer;
     }
 
     internal abstract class LuceneQueryExecutorBase<TDocument> : IQueryExecutor, IFieldMappingInfoProvider
@@ -487,7 +492,7 @@ namespace Lucene.Net.Linq
 
         private LuceneQueryModel PrepareQuery(QueryModel queryModel)
         {
-            QueryModelTransformer.TransformQueryModel(queryModel, context.Settings.EmbeddingGenerator);
+            QueryModelTransformer.TransformQueryModel(queryModel, context.Settings.EmbeddingGenerator, DefaultSearchProperty, MapperAnalyzer);
 
             var builder = new QueryModelTranslator(this, context);
             builder.Build(queryModel);
@@ -584,5 +589,7 @@ namespace Lucene.Net.Linq
         protected abstract TDocument ConvertDocument(Document doc, IQueryExecutionContext context);
         protected abstract TDocument ConvertDocumentForCustomBoost(Document doc);
         protected abstract void PrepareSearchSettings(IQueryExecutionContext context);
+        public virtual string DefaultSearchProperty => null;
+        protected virtual Analyzer MapperAnalyzer => null;
     }
 }

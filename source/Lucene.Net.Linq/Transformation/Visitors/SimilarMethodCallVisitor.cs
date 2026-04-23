@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -13,15 +14,22 @@ namespace Lucene.Net.Linq.Transformation.Visitors
     /// </summary>
     internal class SimilarMethodCallVisitor : MethodInfoMatchingVisitor
     {
-        private static readonly MethodInfo SimilarMethod =
+        private static readonly MethodInfo SimilarStringMethod =
             Util.Reflection.MethodOf<bool>(() => LuceneMethods.Similar(null, null));
 
-        private readonly IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
+        private static readonly MethodInfo SimilarObjectMethod =
+            typeof(LuceneMethods).GetMethods()
+                .First(m => m.Name == "Similar" && m.IsGenericMethod);
 
-        internal SimilarMethodCallVisitor(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        private readonly IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
+        private readonly string defaultSearchProperty;
+
+        internal SimilarMethodCallVisitor(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string defaultSearchProperty = null)
         {
-            AddMethod(SimilarMethod);
+            AddMethod(SimilarStringMethod);
+            AddMethod(SimilarObjectMethod);
             this.embeddingGenerator = embeddingGenerator;
+            this.defaultSearchProperty = defaultSearchProperty;
         }
 
         protected override Expression VisitSupportedMethodCallExpression(MethodCallExpression expression)
@@ -32,12 +40,24 @@ namespace Lucene.Net.Linq.Transformation.Visitors
                     "Cannot use Similar() without configuring an IEmbeddingGenerator on LuceneDataProviderSettings.EmbeddingGenerator.");
             }
 
-            // expression is: LuceneMethods.Similar(property, queryText)
-            // Arguments[0] = the string property expression (e.g., x.Title)
-            // Arguments[1] = the query text
+            string fieldName;
+            string queryText;
 
-            var fieldName = ExtractFieldName(expression.Arguments[0]);
-            var queryText = EvaluateExpression<string>(expression.Arguments[1]);
+            if (expression.Method.IsGenericMethod)
+            {
+                // Object-level: LuceneMethods.Similar<T>(obj, queryText) → default search property
+                fieldName = defaultSearchProperty
+                    ?? throw new InvalidOperationException(
+                        "Cannot use Similar<T>(obj, queryText) without a default search property. " +
+                        "Either call Similar on a specific string property, or ensure the mapped type has a key or indexed property.");
+                queryText = EvaluateExpression<string>(expression.Arguments[1]);
+            }
+            else
+            {
+                // Property-level: LuceneMethods.Similar(property, queryText)
+                fieldName = ExtractFieldName(expression.Arguments[0]);
+                queryText = EvaluateExpression<string>(expression.Arguments[1]);
+            }
 
             if (string.IsNullOrEmpty(queryText))
             {
@@ -46,8 +66,6 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             }
 
             var vector = GenerateEmbedding(queryText);
-
-            // The vector field is named {FieldName}_vector
             var vectorFieldName = fieldName + "_vector";
 
             return new LuceneVectorQueryExpression(vectorFieldName, vector);

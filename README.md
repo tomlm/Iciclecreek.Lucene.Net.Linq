@@ -44,6 +44,9 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 
 ### Features
 * **Vector similarity search** via `.Similar()` with automatic embedding at index and query time
+* **Default search property** (`[Field(Default = true)]`) — one property serves as the target for both free-text `Query()` and vector `Similar()` when no field is specified
+* **Inline Lucene query syntax** via `.Query()` — embed wildcards, boolean operators, phrase queries and more directly in LINQ expressions
+* **One-liner free-text search** via `provider.AsQueryable<T>("query string")`
 * Automatically converts PONOs to Documents and back
 * Add, delete and update documents in atomic transaction
 * Unit of Work pattern automatically tracks and flushes updated documents
@@ -124,6 +127,7 @@ public class Article
 | `IndexMode` (ctor) | `Analyzed` | `Analyzed`, `NotAnalyzed`, `NotAnalyzedNoNorms`, `NoIndex`. |
 | `Store` | `Yes` | Whether the original value is kept verbatim for read-back. |
 | `Key = true` | `false` | Participates in the document primary key (used for replace/delete). Multiple properties can be marked. |
+| `Default = true` | `false` | Marks this property as the default search property. Used by `.Query()`, `.Similar()`, and `AsQueryable<T>(string)` when no field is specified. Only one property per type should be marked. When not set, defaults to the first key or first indexed property. |
 | `Boost` | `1.0f` | Index-time boost. |
 | `Converter` | derived | Custom `TypeConverter` for non-string values. |
 | `Format` | `yyyy-MM-ddTHH:mm:ss` for `DateTime` | Format string used by the default value-type converter. Ignored if `Converter` is set. |
@@ -301,7 +305,10 @@ at translation time with a clear message.
 | `Any()` / `Any(predicate)` | `TotalHits > 0` |
 | `Count()` / `LongCount()` | `TotalHits` |
 | `Min` / `Max` | `Sort` ascending/descending + `Take(1)` |
-| `Where(d => d.Field.Similar("text"))` | `VectorQuery` (KNN or cosine similarity) |
+| `Where(d => d.Field.Query("text*"))` | Parsed Lucene query on a specific field |
+| `Where(d => d.Query("text*"))` | Parsed Lucene query on default search property |
+| `Where(d => d.Field.Similar("text"))` | `VectorQuery` on field (KNN or cosine similarity) |
+| `Where(d => d.Similar("text"))` | `VectorQuery` on default search property |
 | `Select(d => new { ... })` | Document projection (read only the fields you reference) |
 
 ### Collection Contains ("IN" queries)
@@ -402,22 +409,39 @@ avoids manual materialization and in-memory joining in user code.
 
 ### Parsed string queries
 
-For the cases where you need raw Lucene query syntax — wildcards,
-fuzzy search, boosting, range, fielded queries — use the
-`WhereParseQuery` extension:
+For cases where you need raw Lucene query syntax — wildcards,
+fuzzy search, boosting, range, fielded queries — there are three
+approaches, from simplest to most flexible:
+
+**One-liner** — `AsQueryable<T>(string)` parses the query against the
+type's `DefaultSearchProperty` and returns a filtered `IQueryable<T>`:
 
 ```csharp
-using Lucene.Net.Linq;
+var results = provider.AsQueryable<Article>("kitten* OR dog*").ToList();
+```
 
-var results = documents
-    .WhereParseQuery("title:foo* AND year:[2020 TO 2024]")
+**Inline in LINQ** — `.Query()` embeds Lucene syntax directly in a
+LINQ expression, composable with other predicates:
+
+```csharp
+// Against the default search property
+var results = provider.AsQueryable<Article>()
+    .Where(a => a.Query("kitten* OR dog*") && a.WordCount > 500)
+    .ToList();
+
+// Against a specific property
+var results = provider.AsQueryable<Article>()
+    .Where(a => a.Title.Query("lucene~0.8") && a.Category == "tech")
     .ToList();
 ```
 
-`WhereParseQuery` runs the input through Lucene's classic
-`QueryParser` against the provider's analyzer. To pass a
-pre-built `Lucene.Net.Search.Query` instead, use the
-`Where(IQueryable<T>, Query)` overload.
+**Pre-built Query object** — for full control, use `Where(Query)`:
+
+```csharp
+var parser = provider.CreateQueryParser<Article>();
+var query = parser.Parse("title:foo* AND year:[2020 TO 2024]");
+var results = provider.AsQueryable<Article>().Where(query).ToList();
+```
 
 ### Score and boost
 
@@ -583,6 +607,30 @@ public class Article
 }
 ```
 
+A common pattern is a **compound property** that combines multiple text
+fields into one search surface, marked as both the default search property
+and a vector field:
+
+```csharp
+public class Article
+{
+    [Field(Key = true)]
+    public string Id { get; set; }
+
+    [Field]
+    public string Title { get; set; }
+
+    [Field]
+    public string Body { get; set; }
+
+    [Field(Default = true), VectorField]
+    public string Content => $"{Title} {Body}";
+}
+```
+
+This makes `Content` the target for both `article.Query("lucene*")` (free-text)
+and `article.Similar("machine learning")` (vector similarity).
+
 ### Fluent mapping
 
 ```csharp
@@ -592,14 +640,14 @@ public class ArticleMap : ClassMap<Article>
     {
         Key(a => a.Id);
         Property(a => a.Title).AsVectorField();
+        DefaultProperty(a => a.Title);
     }
 }
 ```
 
 ### Querying with `.Similar()`
 
-Use `.Similar()` inside a `Where` clause to rank results by
-similarity. Use `.Take()` to limit how many come back:
+**Property-level** -- search against a specific field's embeddings:
 
 ```csharp
 var results = provider.AsQueryable<Article>()
@@ -608,8 +656,18 @@ var results = provider.AsQueryable<Article>()
     .ToList();
 ```
 
-`.Similar()` composes naturally with other predicates. Filters are
-applied first, then matching documents are ranked by similarity:
+**Object-level** -- search against the default search property
+(set via `[Field(Default = true)]` or `classMap.DefaultProperty()`):
+
+```csharp
+var results = provider.AsQueryable<Article>()
+    .Where(a => a.Similar("machine learning breakthroughs"))
+    .Take(5)
+    .ToList();
+```
+
+**Hybrid** -- `.Similar()` composes naturally with other predicates. Filters
+are applied first, then matching documents are ranked by similarity:
 
 ```csharp
 // Only animals, ranked by similarity

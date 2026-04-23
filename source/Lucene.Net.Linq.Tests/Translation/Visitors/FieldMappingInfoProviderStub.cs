@@ -24,6 +24,8 @@ namespace Lucene.Net.Linq.Tests.Translation.Visitors
             get { return KeyProperties; }
         }
 
+        public string DefaultSearchProperty => "Id";
+
         public IEnumerable<string> KeyProperties
         {
             get { return new[] {"Id"}; }
