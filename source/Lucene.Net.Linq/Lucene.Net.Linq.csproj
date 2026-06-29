@@ -13,7 +13,7 @@
     <!-- Package metadata (moved from .nuspec) -->
     <IsPackable>true</IsPackable>
     <PackageId>Iciclecreek.Lucene.Net.Linq</PackageId>
-    <Version>4.8.5-beta00017</Version>
+    <Version>4.8.5-beta00018</Version>
     <Title>Iciclecreek.Lucene.Net.Linq</Title>
     <Authors>Chris Eldredge/Tom Laird-McConnell</Authors>
     <Owners>The Motley Fool, LLC</Owners>
@@ -43,9 +43,6 @@
     <PackageReference Include="Remotion.Linq" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Iciclecreek.Lucene.Net.Vector" />
   </ItemGroup>
 
