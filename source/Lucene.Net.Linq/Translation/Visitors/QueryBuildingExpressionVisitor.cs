@@ -53,6 +53,17 @@ namespace Lucene.Net.Linq.Translation.Visitors
             }
         }
 
+        /// <summary>
+        /// A method call that survives transformation could not be translated to a Lucene query.
+        /// Ignoring it would silently drop the filter and match every document, so fail instead.
+        /// </summary>
+        protected override Expression VisitMethodCall(MethodCallExpression expression)
+        {
+            throw new NotSupportedException(
+                "Method " + expression.Method.DeclaringType?.Name + "." + expression.Method.Name +
+                " cannot be translated to a Lucene query: " + expression);
+        }
+
         protected override Expression VisitBoostBinaryExpression(BoostBinaryExpression expression)
         {
             var result = base.VisitBoostBinaryExpression(expression);

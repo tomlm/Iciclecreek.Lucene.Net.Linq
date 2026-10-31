@@ -27,7 +27,7 @@ namespace Lucene.Net.Linq.Tests
         {
             var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_48);
 
-            TestDelegate call = () => provider.OpenSession<Item>();
+            Action call = () => provider.OpenSession<Item>();
 
             Assert.That(call, Throws.Nothing);
         }
@@ -37,7 +37,7 @@ namespace Lucene.Net.Linq.Tests
         {
             var provider = new LuceneDataProvider(new RAMDirectory(), new SimpleAnalyzer(LuceneVersion.LUCENE_48), Version.LUCENE_48);
 
-            TestDelegate call = () => provider.OpenSession(Substitute.For<IDocumentMapper<Item>>());
+            Action call = () => provider.OpenSession(Substitute.For<IDocumentMapper<Item>>());
 
             Assert.That(call, Throws.ArgumentException.With.Property("ParamName").EqualTo("documentMapper"));
         }
@@ -111,7 +111,7 @@ namespace Lucene.Net.Linq.Tests
 
             writer.IsClosed.Returns(true);
 
-            TestDelegate call = () => provider.IndexWriter.ToString();
+            Action call = () => provider.IndexWriter.ToString();
 
             Assert.That(call, Throws.InvalidOperationException);
         }

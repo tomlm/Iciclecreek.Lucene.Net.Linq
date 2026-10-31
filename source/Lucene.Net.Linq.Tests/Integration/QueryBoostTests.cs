@@ -79,7 +79,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         [Test]
         public void ExtensionMethodThrowsWhenInvoked()
         {
-            TestDelegate call = () => "hello".Boost(0f);
+            Action call = () => "hello".Boost(0f);
 
             Assert.That(call, Throws.InvalidOperationException);
         }
@@ -87,7 +87,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         [Test]
         public void ThrowsWhenNotCalledOnQueryField()
         {
-            TestDelegate call = () => (from d in documents orderby d.Name.Boost(5f) select d).ToList();
+            Action call = () => (from d in documents orderby d.Name.Boost(5f) select d).ToList();
             Assert.That(call, Throws.InstanceOf<NotSupportedException>());
         }
     }

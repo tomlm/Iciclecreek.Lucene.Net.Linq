@@ -33,7 +33,7 @@ namespace Lucene.Net.Linq.Tests.Integration
                 }
             }
 
-            TestDelegate call = () => System.IO.Directory.Delete(dir, true);
+            Action call = () => System.IO.Directory.Delete(dir, true);
             Assert.That(call, Throws.Nothing);
         }
     }

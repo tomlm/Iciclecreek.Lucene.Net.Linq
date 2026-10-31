@@ -20,7 +20,7 @@ namespace Lucene.Net.Linq.Tests
         {
             var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), LuceneVersion.LUCENE_48);
 
-            TestDelegate call = provider.Dispose;
+            System.Action call = provider.Dispose;
 
             Assert.That(call, Throws.Nothing);
         }
@@ -30,7 +30,7 @@ namespace Lucene.Net.Linq.Tests
         {
             var provider = new ReadOnlyLuceneDataProvider(new RAMDirectory(), LuceneVersion.LUCENE_48);
 
-            TestDelegate call = () => provider.OpenSession<Record>();
+            System.Action call = () => provider.OpenSession<Record>();
 
             Assert.That(call, Throws.InvalidOperationException);
         }

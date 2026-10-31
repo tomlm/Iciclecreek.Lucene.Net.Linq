@@ -140,7 +140,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var mapper = CreateMapper("ReadOnly");
 
-            TestDelegate call = () => mapper.CopyFromDocument(new Document(), new QueryExecutionContext(), this);
+            System.Action call = () => mapper.CopyFromDocument(new Document(), new QueryExecutionContext(), this);
 
             Assert.That(call, Throws.Nothing);
         }

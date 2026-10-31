@@ -43,9 +43,11 @@ namespace Lucene.Net.Linq.Transformation.Visitors
                 // Original pattern: field.Contains(constant) → field == constant
                 var field = fromExpression;
                 var pattern = item;
-                if (pattern.Type.IsPrimitive)
+                // The field is a collection and the pattern one element of it; type the pattern as
+                // object so Expression.Equal accepts the pair (string is not primitive but needs this too).
+                if (pattern.Type != typeof(object) && pattern is ConstantExpression constantPattern)
                 {
-                    pattern = Expression.Constant(((ConstantExpression)pattern).Value, typeof(object));
+                    pattern = Expression.Constant(constantPattern.Value, typeof(object));
                 }
 
                 return Expression.MakeBinary(ExpressionType.Equal, field, pattern);

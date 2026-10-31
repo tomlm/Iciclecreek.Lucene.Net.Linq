@@ -23,7 +23,14 @@ namespace Lucene.Net.Linq.Mapping
                 values.Add(ConvertFieldValue(field));
             }
 
-            propertySetter(target, values.ToArray(elementType));
+            var array = values.ToArray(elementType);
+            var propertyType = propertyInfo.PropertyType;
+
+            // Arrays and interfaces an array implements (IEnumerable<T>, IList<T>…) take the array as is;
+            // concrete collections such as List<T> are built from it.
+            propertySetter(target, propertyType.IsAssignableFrom(array.GetType())
+                ? array
+                : Activator.CreateInstance(propertyType, array));
         }
 
         public override void CopyToDocument(T source, Document target)
