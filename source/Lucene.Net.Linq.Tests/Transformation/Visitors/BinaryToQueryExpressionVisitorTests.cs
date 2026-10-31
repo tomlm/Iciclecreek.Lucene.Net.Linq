@@ -132,7 +132,7 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
         {
             var expression = Expression.MakeBinary(ExpressionType.NotEqual, Expression.Constant("bar"), Expression.Constant("foo"));
 
-            TestDelegate call = () => visitor.Visit(expression);
+            System.Action call = () => visitor.Visit(expression);
             Assert.That(call, Throws.Exception.InstanceOf<NotSupportedException>());
         }
 

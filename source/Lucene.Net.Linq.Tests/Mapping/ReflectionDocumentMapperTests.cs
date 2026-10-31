@@ -48,7 +48,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var mapper = new ReflectionDocumentMapper<ReflectedDocument>(LuceneVersion.LUCENE_48);
 
-            TestDelegate call = () => mapper.ToKey(new ReflectedDocument());
+            Action call = () => mapper.ToKey(new ReflectedDocument());
 
             Assert.That(call, Throws.InvalidOperationException);
         }

@@ -76,7 +76,7 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
             // "hello".Boost(5.5)
             var expr = Expression.Call(methodInfo, Expression.Constant("hello"), Expression.Constant(5.5f));
 
-            TestDelegate call = () => visitor.Visit(expr);
+            Action call = () => visitor.Visit(expr);
 
             Assert.That(call, Throws.InstanceOf<NotSupportedException>());
         }

@@ -56,7 +56,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         public void BuildThrowsOnUnconvertableType()
         {
             var propertyInfo = GetType().GetProperty("ComplexProperty");
-            TestDelegate call = () => FieldMappingInfoBuilder.Build<FieldMappingInfoBuilderTests>(propertyInfo);
+            System.Action call = () => FieldMappingInfoBuilder.Build<FieldMappingInfoBuilderTests>(propertyInfo);
 
             Assert.That(call, Throws.Exception.InstanceOf<NotSupportedException>());
         }

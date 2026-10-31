@@ -20,7 +20,7 @@ namespace Lucene.Net.Linq.Tests.Fluent
         {
             map.DocumentKey("type");
 
-            TestDelegate call = () => map.ToDocumentMapper();
+            System.Action call = () => map.ToDocumentMapper();
 
             Assert.That(call, Throws.InvalidOperationException);
         }

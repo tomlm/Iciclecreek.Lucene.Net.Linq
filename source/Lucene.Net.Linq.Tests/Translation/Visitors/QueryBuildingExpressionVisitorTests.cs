@@ -42,7 +42,7 @@ namespace Lucene.Net.Linq.Tests.Translation.Visitors
                 MemberAccessId,
                 Expression.Constant(1));
 
-            TestDelegate call = () => builder.Visit(expression);
+            System.Action call = () => builder.Visit(expression);
 
             Assert.That(call, Throws.Exception.InstanceOf<NotSupportedException>());
         }

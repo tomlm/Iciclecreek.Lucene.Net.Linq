@@ -60,7 +60,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "id" }, "" } });
 
-            TestDelegate call = () => key.ToQuery();
+            System.Action call = () => key.ToQuery();
 
             Assert.That(call, Throws.InvalidOperationException);
         }
@@ -79,7 +79,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         {
             var key = new DocumentKey(new Dictionary<IFieldMappingInfo, object> { { new FakeFieldMappingInfo { FieldName = "id1" }, null } });
 
-            TestDelegate call = () => key.GetHashCode();
+            System.Action call = () => key.GetHashCode();
 
             Assert.That(call, Throws.Nothing);
         }

@@ -256,7 +256,7 @@ namespace Lucene.Net.Linq.Tests
 
             var r1 = new Record { Id = "12" };
 
-            TestDelegate call = () => session.Delete(r1);
+            Action call = () => session.Delete(r1);
 
             Assert.That(call, Throws.InvalidOperationException);
         }

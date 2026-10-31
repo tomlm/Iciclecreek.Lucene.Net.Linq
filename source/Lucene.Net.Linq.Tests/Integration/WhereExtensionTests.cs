@@ -83,7 +83,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         public void WhereParseQuery_NumericBool_InvalidString_Throws()
         {
             var parser = provider.CreateQueryParser<SampleDocument>();
-            TestDelegate call = () => parser.Parse("NumericBool:not-a-bool");
+            Action call = () => parser.Parse("NumericBool:not-a-bool");
             Assert.That(call, Throws.InstanceOf<ParseException>());
         }
 

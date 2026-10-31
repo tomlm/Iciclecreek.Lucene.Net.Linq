@@ -98,7 +98,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void AnalyzerMustInheritFromBase()
         {
-            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof (object), Version.LUCENE_48);
+            Action call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof (object), Version.LUCENE_48);
 
             Assert.That(call, Throws.InvalidOperationException);
         }
@@ -106,7 +106,7 @@ namespace Lucene.Net.Linq.Tests.Mapping
         [Test]
         public void AnalyzerMustHavePublicCtr()
         {
-            TestDelegate call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof(Private), Version.LUCENE_48);
+            Action call = () => FieldMappingInfoBuilder.CreateAnalyzer(typeof(Private), Version.LUCENE_48);
 
             Assert.That(call, Throws.InvalidOperationException);
         }
