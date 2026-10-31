@@ -147,7 +147,7 @@ namespace Lucene.Net.Linq
 
                     elapsedPreparationTime = watch.Elapsed;
 
-                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults, luceneQueryModel.Sort);
+                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults, luceneQueryModel.Sort, doDocScores: true, doMaxScore: false);
 
                     elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
                 }
@@ -247,7 +247,7 @@ namespace Lucene.Net.Linq
                 }
                 else
                 {
-                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort, doDocScores: true, doMaxScore: false);
                 }
                 var elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
 
