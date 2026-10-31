@@ -64,6 +64,12 @@ namespace Lucene.Net.Linq.Mapping
         {
             collectionType = type;
 
+            if (type.IsArray && type.GetArrayRank() == 1)
+            {
+                collectionType = type.GetElementType();
+                return true;
+            }
+
             if (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type.GetGenericTypeDefinition()))
             {
                 collectionType = type.GetGenericArguments()[0];
@@ -139,7 +145,7 @@ namespace Lucene.Net.Linq.Mapping
                 return new FormatConverter(propType, format);
             }
 
-            if (p.PropertyType == typeof(string)) return null;
+            if (type == typeof(string)) return null;
 
             var converter = TypeDescriptor.GetConverter(type);
 

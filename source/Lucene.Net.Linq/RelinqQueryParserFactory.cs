@@ -57,6 +57,7 @@ namespace Lucene.Net.Linq
         {
             var firstRegistry = new ExpressionTransformerRegistry();
             firstRegistry.Register(new AllowSpecialCharactersExpressionTransformer());
+            firstRegistry.Register(new SpanContainsExpressionTransformer());
 
             var processor = ExpressionTreeParser.CreateDefaultProcessor(ExpressionTransformerRegistry.CreateDefault());
             processor.InnerProcessors.Insert(0, new TransformingExpressionTreeProcessor(firstRegistry));
