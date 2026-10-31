@@ -174,6 +174,32 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(result.ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
         }
         [Test]
+        public void ScoreProperty_IsFilledWithoutOrderBy()
+        {
+            AddTestScoreDocumentsAsScoreTracking();
+
+            var documents = provider.AsQueryable<ScoreTrackingSampleDocument>();
+
+            var result = (from d in documents where d.Name == "apple" select d).ToList();
+
+            Assert.That(result.Count, Is.EqualTo(3));
+            Assert.That(result.All(d => d.ScoreProperty > 0), Is.True, string.Join(", ", result.Select(d => d.ScoreProperty)));
+            Assert.That(result.Select(d => d.ScoreProperty), Is.Ordered.Descending);
+        }
+
+        [Test]
+        public void ScoreProperty_IsFilledWhenOrderedByScore()
+        {
+            AddTestScoreDocumentsAsScoreTracking();
+
+            var documents = provider.AsQueryable<ScoreTrackingSampleDocument>();
+
+            var result = (from d in documents where d.Name == "apple" orderby d.ScoreProperty descending select d).ToList();
+
+            Assert.That(result.All(d => d.ScoreProperty > 0), Is.True, string.Join(", ", result.Select(d => d.ScoreProperty)));
+        }
+
+        [Test]
         public void OrderBy_Score_ExtensionMethod()
         {
             AddTestScoreDocuments();
