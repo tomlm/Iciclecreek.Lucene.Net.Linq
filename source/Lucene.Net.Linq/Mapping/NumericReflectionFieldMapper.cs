@@ -81,7 +81,10 @@ namespace Lucene.Net.Linq.Mapping
 
             if (value is DateTime dateTime && propertyType == typeof(DateTimeOffset))
             {
-                value = new DateTimeOffset(dateTime);
+                // Treat the bound as an instant, as the other date mappings do:
+                // a Local/Unspecified DateTime becomes UTC first, so the
+                // converter's ticks don't compare its wall-clock time.
+                value = new DateTimeOffset(dateTime.ToUniversalTime());
             }
             else if (value is DateTimeOffset dateTimeOffset && propertyType == typeof(DateTime))
             {

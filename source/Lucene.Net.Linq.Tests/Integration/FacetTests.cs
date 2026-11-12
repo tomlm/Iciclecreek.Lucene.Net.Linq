@@ -428,6 +428,25 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void Ranges_NumericDateTimeOffset_LocalDateTimeBoundsAreInstants()
+        {
+            // One hour before local midnight on 1 January, stored with a zero offset.
+            // Compared as an instant it is in December; compared by the bound's
+            // wall-clock time it would land in January on any machine not on UTC.
+            var janStartLocal = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Local);
+            var instant = new DateTimeOffset(janStartLocal.ToUniversalTime().AddHours(-1), TimeSpan.Zero);
+
+            Add(new FacetEvent { Id = "1", When = instant });
+
+            provider.AsQueryable<FacetEvent>()
+                .Facets(out var facets, f => f.Ranges(p => p.When,
+                    FacetRange.Monthly(new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Local), janStartLocal)))
+                .ToList();
+
+            Assert.That(Pairs(facets.For(p => p.When)), Is.EqualTo(new[] { "2025-12=1", "2026-01=0" }));
+        }
+
+        [Test]
         public void Ranges_DateTime_AcceptDateTimeOffsetBounds()
         {
             AddSamples();
