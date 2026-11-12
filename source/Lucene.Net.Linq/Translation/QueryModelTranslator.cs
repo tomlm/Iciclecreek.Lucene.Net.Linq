@@ -90,6 +90,11 @@ namespace Lucene.Net.Linq.Translation
             model.AddQueryStatisticsCallback(clause.Callback);
         }
 
+        public void VisitFacetsClause(FacetsClause clause, QueryModel queryModel, int index)
+        {
+            model.AddFacetQuery(clause.FacetQuery);
+        }
+
         private void AddPolymorphicTypeFilter()
         {
             var mappedType = fieldMappingInfoProvider.MappedType;

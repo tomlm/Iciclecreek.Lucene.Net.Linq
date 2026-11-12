@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Lucene.Net.Analysis.Core;
@@ -19,6 +20,7 @@ namespace Lucene.Net.Linq.Mapping
 
         private readonly TypeConverter typeToValueTypeConverter;
         private readonly int precisionStep;
+        private readonly string rangeFacetField;
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost)
             : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues: false)
@@ -26,10 +28,101 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues)
-            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues)
+            : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues, facet: false)
+        {
+        }
+
+        public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues, bool facet)
+            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues, facet: facet)
         {
             this.typeToValueTypeConverter = typeToValueTypeConverter;
             this.precisionStep = precisionStep;
+            this.rangeFacetField = facet ? fieldName + RangeFacetFieldSuffix : null;
+        }
+
+        /// <summary>
+        /// Numeric fields keep range-facet values in the hidden
+        /// <c>{Field}$range</c> doc-values column, as other properties do, and
+        /// not in the column <c>DocValues = true</c> writes under the field's
+        /// own name. Range counts read through FieldCache, which un-inverts the
+        /// indexed terms of a segment that lacks the doc-values column. For the
+        /// field's own name that would count documents written before
+        /// <c>Facet</c> was set, and throw where the terms are Int32. The hidden
+        /// field has no terms, so such segments are skipped.
+        /// </summary>
+        public override string RangeFacetField => rangeFacetField;
+
+        public override NumericFieldType RangeFacetValueType
+        {
+            get
+            {
+                if (!facet) return NumericFieldType.NONE;
+
+                var type = typeToValueTypeConverter != null
+                    ? GetUnderlyingValueType()
+                    : propertyInfo.PropertyType.GetUnderlyingType();
+
+                if (type != null && type.IsEnum) type = Enum.GetUnderlyingType(type);
+
+                // The range column widens int to long and float to double.
+                if (type == typeof(double) || type == typeof(float)) return NumericFieldType.DOUBLE;
+                return NumericFieldType.INT64;
+            }
+        }
+
+        public override object ConvertToRangeFacetValue(object value)
+        {
+            if (value == null) return null;
+
+            // FacetRange.Daily/Monthly/Yearly produce DateTime bounds, and neither
+            // date type converts to the other through Convert.ChangeType. Accept
+            // both on either kind of date property, as the base mapper does.
+            var propertyType = propertyInfo.PropertyType.GetUnderlyingType();
+
+            if (value is DateTime dateTime && propertyType == typeof(DateTimeOffset))
+            {
+                // Treat the bound as an instant, as the other date mappings do:
+                // a Local/Unspecified DateTime becomes UTC first, so the
+                // converter's ticks don't compare its wall-clock time.
+                value = new DateTimeOffset(dateTime.ToUniversalTime());
+            }
+            else if (value is DateTimeOffset dateTimeOffset && propertyType == typeof(DateTime))
+            {
+                value = dateTimeOffset.UtcDateTime;
+            }
+
+            value = ConvertToSupportedValueType(value);
+
+            if (value != null && value.GetType().IsEnum)
+            {
+                value = Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()));
+            }
+
+            switch (value)
+            {
+                case double d: return d;
+                case float f: return (double)f;
+                default: return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>
+        /// The converter of a numeric field produces the indexed number, which
+        /// is no use as a label for dates, so the label is the value in
+        /// invariant-culture form. Dates are converted to UTC first, as the
+        /// indexed ticks of a <see cref="DateTime"/> are: one instant is one
+        /// label whatever its <see cref="DateTime.Kind"/> or offset.
+        /// </summary>
+        protected internal override string ConvertToFacetLabel(object value)
+        {
+            switch (value)
+            {
+                case null: return null;
+                case DateTime dt: return dt.ToUniversalTime().ToString(FieldMappingInfoBuilder.DefaultDateTimeFormat, CultureInfo.InvariantCulture);
+                case DateTimeOffset dto: return dto.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
+                case IFormattable formattable: return formattable.ToString(null, CultureInfo.InvariantCulture);
+                default: return value.ToString();
+            }
         }
 
         public int PrecisionStep
@@ -89,6 +182,11 @@ namespace Lucene.Net.Linq.Mapping
 
             target.RemoveFields(fieldName);
 
+            // Also when the value is null: a reused document may hold the
+            // range column of an earlier value.
+            var rangeField = rangeFacetField;
+            if (rangeField != null) target.RemoveFields(rangeField);
+
             if (value == null) return;
 
             value = ConvertToSupportedValueType(value);
@@ -103,24 +201,31 @@ namespace Lucene.Net.Linq.Mapping
             var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
             Field numericField;
 
+            // The range column holds the indexed number as a long or a double
+            // (see RangeFacetValueType), whatever the width of the field itself.
             Field dvField = null;
+            Field rangeDvField = null;
             switch (value)
             {
                 case int i:
                     numericField = new Int32Field(fieldName, i, fieldStore);
                     if (docValues) dvField = new NumericDocValuesField(fieldName, i);
+                    if (rangeField != null) rangeDvField = new NumericDocValuesField(rangeField, i);
                     break;
                 case long l:
                     numericField = new Int64Field(fieldName, l, fieldStore);
                     if (docValues) dvField = new NumericDocValuesField(fieldName, l);
+                    if (rangeField != null) rangeDvField = new NumericDocValuesField(rangeField, l);
                     break;
                 case float f:
                     numericField = new SingleField(fieldName, f, fieldStore);
                     if (docValues) dvField = new SingleDocValuesField(fieldName, f);
+                    if (rangeField != null) rangeDvField = new DoubleDocValuesField(rangeField, f);
                     break;
                 case double d:
                     numericField = new DoubleField(fieldName, d, fieldStore);
                     if (docValues) dvField = new DoubleDocValuesField(fieldName, d);
+                    if (rangeField != null) rangeDvField = new DoubleDocValuesField(rangeField, d);
                     break;
                 default:
                     throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as a numeric field.", nameof(source));
@@ -131,6 +236,7 @@ namespace Lucene.Net.Linq.Mapping
             // norms). Boost is silently dropped if not the default.
             target.Add(numericField);
             if (dvField != null) target.Add(dvField);
+            if (rangeDvField != null) target.Add(rangeDvField);
         }
 
         public override string ConvertToQueryExpression(object value)

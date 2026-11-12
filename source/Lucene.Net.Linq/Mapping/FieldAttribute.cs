@@ -103,6 +103,42 @@ namespace Lucene.Net.Linq.Mapping
         /// </remarks>
         public bool DocValues { get; set; }
 
+        /// <summary>
+        /// When <c>true</c>, the property's values can be counted with
+        /// <see cref="LuceneMethods.Facets{T}"/>. Works on single-valued and
+        /// collection properties.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each value is written to the shared sorted-set facet field
+        /// (<c>$facets</c>) as a string label. On a <see cref="FieldAttribute"/>
+        /// property the label is the same text the converter produces for the
+        /// index. On a <see cref="NumericFieldAttribute"/> property, whose
+        /// converter produces a number, it is the value in invariant-culture
+        /// form; dates are converted to UTC first and written as
+        /// <c>yyyy-MM-ddTHH:mm:ss</c> (<see cref="DateTime"/>) or in the
+        /// round-trip <c>"o"</c> format (<see cref="DateTimeOffset"/>), so one
+        /// instant is one label. Labels are not analyzed, so case is preserved.
+        /// Null and empty values are skipped.
+        /// </para>
+        /// <para>
+        /// Single-valued numeric, <see cref="DateTime"/> and <see cref="DateTimeOffset"/>
+        /// properties also support range counts. Their value is written to a
+        /// hidden numeric doc-values column named <c>{Field}$range</c>; the
+        /// property's own field is unchanged, and <c>Facet</c> does not turn on
+        /// <see cref="DocValues"/>. A <see cref="NumericFieldAttribute"/> property
+        /// stores there the number it indexes (ticks for dates). Any other date
+        /// property stores UTC ticks. Collection properties support value
+        /// counts only.
+        /// </para>
+        /// <para>
+        /// Documents indexed before this flag was set have neither facet values
+        /// nor the range column. They are not counted, by value or by range,
+        /// until they are re-indexed.
+        /// </para>
+        /// </remarks>
+        public bool Facet { get; set; }
+
         internal TypeConverter ConverterInstance { get; set; }
     }
 

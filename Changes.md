@@ -1,3 +1,24 @@
+# Unreleased: facet counting
+
+Adds facet counting via `Lucene.Net.Facet` 4.8.0-beta00018 (sorted-set doc-values facets, no taxonomy index). See the README's *Facets* section.
+
+- **Mapping:** new `Facet` option on `[Field]` / `[NumericField]` (`BaseFieldAttribute.Facet`) and `PropertyMap<T>.Facet()` in the fluent mapping. Works on collection properties. The existing `DocValues` downgrade on collections is unchanged.
+- **Writing:** `DocumentMapperBase<T>.MapFieldsToDocument` writes facet values to the shared `$facets` field in the caller's document. It builds them with `FacetsConfig.Build` on a scratch document, then appends the result, replacing any earlier facet fields. Facet field mappers are found at write time, so mappers added with `AddField` / `AddKeyField` are included.
+- **Range counts:**
+  - Single-valued numeric, `DateTime` and `DateTimeOffset` properties get a hidden `{Field}$range` doc-values column. The property's own field is unchanged.
+  - `[NumericField(Facet = true)]` stores the number it indexes there, as a `long` or a `double`. `Facet` does not turn on `DocValues`.
+  - Other date properties store UTC ticks there.
+  - The hidden column has no indexed terms, so documents written before `Facet` was set are not counted until re-indexed.
+- **Query:** new `LuceneMethods.Facets(out FacetResults<T>, f => f.Count(...).Ranges(...))` extension clause (same pattern as `CaptureStatistics`).
+  - Counts are collected in the same search pass as the hits (`FacetsCollector.Search`).
+  - They use the vector-resolved query.
+  - They are filled for list and scalar results.
+- **Caching:** the `SortedSetDocValuesReaderState` is built lazily per searcher and dropped when the searcher reloads. An index with no facet data yields empty counts.
+- **New public types:** `FacetValue`, `FacetRange` (with `Daily` / `Monthly` / `Yearly`), `FacetRequest<T>`, `FacetResults<T>`, `IFacetFieldMappingInfo`, `IFacetFieldMapper<T>`.
+- **New constructor overloads:** `ReflectionFieldMapper<T>` and `NumericReflectionFieldMapper<T>` gain overloads with a `facet` argument. Existing constructors are unchanged.
+- **New dependency:** `Lucene.Net.Facet`, which brings `Lucene.Net.Join` transitively.
+- **Not included:** drill-sideways and hierarchical facets.
+
 # `net8-upgrade` → `master` merge summary
 
 Full port of `Lucene.Net.Linq` from the `Lucene.Net 3.0.3` / `net40` baseline to `Lucene.Net 4.8.0-beta00017` on SDK-style projects multi-targeting `netstandard2.0;net8.0`. **170 files changed, +9 689 / −9 973**, **426 / 427 tests passing** (1 pre-existing skip), **0 build warnings** on both target frameworks.

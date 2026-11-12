@@ -27,7 +27,7 @@ namespace Lucene.Net.Linq.Mapping
             var docValues = !isCollection && metadata.DocValues;
 
             return new NumericReflectionFieldMapper<T>(p, metadata.Store, typeToValueTypeConverter, valueTypeToStringConverter, fieldName,
-                                                       metadata.PrecisionStep, metadata.Boost, docValues);
+                                                       metadata.PrecisionStep, metadata.Boost, docValues, metadata.Facet);
         }
 
         private static TypeConverter GetComplexTypeToScalarConverter(Type type, NumericFieldAttribute metadata)

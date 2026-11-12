@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using Lucene.Net.Documents;
 
 namespace Lucene.Net.Linq.Mapping
@@ -9,9 +10,39 @@ namespace Lucene.Net.Linq.Mapping
         private readonly Type elementType;
 
         public CollectionReflectionFieldMapper(ReflectionFieldMapper<T> inner, Type elementType)
-            : base(inner.PropertyInfo, inner.Store, inner.IndexMode, inner.TermVector, inner.Converter, inner.FieldName, inner.CaseSensitive, inner.Analyzer, inner.Boost)
+            : base(inner.PropertyInfo, inner.Store, inner.IndexMode, inner.TermVector, inner.Converter, inner.FieldName, Lucene.Net.QueryParsers.Classic.Operator.OR, inner.CaseSensitive, inner.Analyzer, inner.Boost, nativeSort: false, docValues: false, facet: inner.Facet)
         {
             this.elementType = elementType;
+        }
+
+        /// <summary>
+        /// Collections support value counts only; Lucene 4.8 has no
+        /// multi-valued numeric doc-values for range counts.
+        /// </summary>
+        public override string RangeFacetField => null;
+
+        public override NumericFieldType RangeFacetValueType => NumericFieldType.NONE;
+
+        public override object ConvertToRangeFacetValue(object value)
+        {
+            throw new NotSupportedException("Range facets are not supported on collection property " + PropertyName + ".");
+        }
+
+        public override IEnumerable<string> GetFacetValues(T source)
+        {
+            if (!facet) yield break;
+
+            var value = (IEnumerable)propertyGetter(source);
+
+            if (value == null) yield break;
+
+            foreach (var item in value)
+            {
+                var label = ConvertToFacetLabel(item);
+
+                if (!string.IsNullOrEmpty(label))
+                    yield return label;
+            }
         }
 
         public override void CopyFromDocument(Document source, IQueryExecutionContext context, T target)

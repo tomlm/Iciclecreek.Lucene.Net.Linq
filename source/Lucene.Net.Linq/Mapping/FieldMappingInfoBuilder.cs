@@ -53,6 +53,11 @@ namespace Lucene.Net.Linq.Mapping
 
             if (vectorFieldAttribute != null)
             {
+                if (mapper.Facet)
+                {
+                    throw new NotSupportedException("Property " + p.Name + " cannot be both a vector field and a facet.");
+                }
+
                 return new VectorFieldMapper<T>(mapper, embeddingGenerator,
                     vectorFieldAttribute.K, vectorFieldAttribute.M, vectorFieldAttribute.EfSearch);
             }
@@ -96,8 +101,11 @@ namespace Lucene.Net.Linq.Mapping
             // doesn't fit single-value LINQ ordering. Documented on
             // BaseFieldAttribute.DocValues.
             var docValues = !isCollection && metadata != null && metadata.DocValues;
+            // Facets are written to the separate $facets field, so unlike
+            // DocValues they work on collections too.
+            var facet = metadata != null && metadata.Facet;
 
-            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues);
+            return new ReflectionFieldMapper<T>(p, store, index, termVectorMode, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues, facet);
         }
 
         internal static Analyzer BuildAnalyzer(FieldAttribute metadata, TypeConverter converter, Version version)

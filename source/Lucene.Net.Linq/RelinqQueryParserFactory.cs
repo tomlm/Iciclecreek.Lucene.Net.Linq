@@ -28,6 +28,7 @@ namespace Lucene.Net.Linq
             registry.Register(OpenGenericMethods(BoostExpressionNode.SupportedMethods), typeof(BoostExpressionNode));
             registry.Register(OpenGenericMethods(QueryStatisticsCallbackExpressionNode.SupportedMethods), typeof(QueryStatisticsCallbackExpressionNode));
             registry.Register(OpenGenericMethods(TrackRetrievedDocumentsExpressionNode.SupportedMethods), typeof(TrackRetrievedDocumentsExpressionNode));
+            registry.Register(OpenGenericMethods(FacetsExpressionNode.SupportedMethods), typeof(FacetsExpressionNode));
 
             var nodeTypeProvider = ExpressionTreeParser.CreateDefaultNodeTypeProvider();
             nodeTypeProvider.InnerProviders.Add(registry);

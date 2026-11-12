@@ -61,6 +61,10 @@ namespace Lucene.Net.Linq.Fluent
         protected internal override IFieldMapper<T> ToFieldMapper()
         {
             var inner = base.ToFieldMapperInternal();
+            if (inner.Facet)
+            {
+                throw new System.NotSupportedException("Property " + PropertyName + " cannot be both a vector field and a facet.");
+            }
             return new VectorFieldMapper<T>(inner, embeddingGenerator, k, m, efSearch);
         }
     }
