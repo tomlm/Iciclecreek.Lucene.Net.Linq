@@ -34,6 +34,9 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
   and `net10.0`; 
 - **Polymorphic select** - searching for a base type always properly instantiated object types of the original type.
 - **JOIN** LINQ join support utilizes search index to query across document types 
+- **Facet counting** via `.Facets(...)`. Value counts (including on
+  collection properties) and numeric/date range counts, collected in the
+  same search pass as the results. See [Facets](#facets).
 - **DocValues opt-in** (`[Field(DocValues = true)]` /
   `[NumericField(DocValues = true)]`). Writes a parallel column-store
   field at index time so sorting, grouping and faceting read from a
@@ -59,6 +62,7 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 * **LINQ joins** across document types with automatic semi-join pushdown via `TermsFilter`
 * **`collection.Contains(field)`** — the LINQ "IN" pattern translates to an efficient `TermsFilter`
 * Native pagination using Skip and Take
+* **Facet counts** via `.Facets(...)`: per-value counts and numeric/date range buckets for any query
 * Support storing and querying NumericField
 * Polymorphic type hierarchies: store subtypes, query by base type, get back real types
 * Automatically convert complex types for storing, querying and sorting
