@@ -74,6 +74,20 @@ namespace Lucene.Net.Linq.Mapping
         {
             if (value == null) return null;
 
+            // FacetRange.Daily/Monthly/Yearly produce DateTime bounds, and neither
+            // date type converts to the other through Convert.ChangeType. Accept
+            // both on either kind of date property, as the base mapper does.
+            var propertyType = propertyInfo.PropertyType.GetUnderlyingType();
+
+            if (value is DateTime dateTime && propertyType == typeof(DateTimeOffset))
+            {
+                value = new DateTimeOffset(dateTime);
+            }
+            else if (value is DateTimeOffset dateTimeOffset && propertyType == typeof(DateTime))
+            {
+                value = dateTimeOffset.UtcDateTime;
+            }
+
             value = ConvertToSupportedValueType(value);
 
             if (value != null && value.GetType().IsEnum)

@@ -392,6 +392,47 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void Ranges_NumericDateTimeOffset_AcceptsDateTimeBounds()
+        {
+            Add(new FacetEvent { Id = "1", When = new DateTimeOffset(2026, 1, 15, 0, 0, 0, TimeSpan.Zero) },
+                new FacetEvent { Id = "2", When = new DateTimeOffset(2026, 1, 20, 0, 0, 0, TimeSpan.Zero) },
+                new FacetEvent { Id = "3", When = new DateTimeOffset(2026, 2, 10, 0, 0, 0, TimeSpan.Zero) });
+
+            // Daily, Monthly and Yearly only produce DateTime bounds.
+            provider.AsQueryable<FacetEvent>()
+                .Facets(out var facets, f => f.Ranges(p => p.When, FacetRange.Monthly(Utc(2026, 1, 1), Utc(2026, 2, 1))))
+                .ToList();
+
+            Assert.That(Pairs(facets.For(p => p.When)), Is.EqualTo(new[] { "2026-01=2", "2026-02=1" }));
+
+            provider.AsQueryable<FacetEvent>()
+                .Facets(out facets, f => f.Ranges(p => p.When, new[]
+                {
+                    new FacetRange("jan", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero)),
+                }))
+                .ToList();
+
+            Assert.That(Pairs(facets.For(p => p.When)), Is.EqualTo(new[] { "jan=2" }));
+        }
+
+        [Test]
+        public void Ranges_DateTime_AcceptDateTimeOffsetBounds()
+        {
+            AddSamples();
+
+            // An offset bound is the same instant as its UTC DateTime: 2026-02-01T00:00Z.
+            var jan = new[]
+            {
+                new FacetRange("jan", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 2, 1, 2, 0, 0, TimeSpan.FromHours(2))),
+            };
+
+            Passages.Facets(out var facets, f => f.Ranges(p => p.Published, jan).Ranges(p => p.Date, jan)).ToList();
+
+            Assert.That(Pairs(facets.For(p => p.Published)), Is.EqualTo(new[] { "jan=1" }), "[NumericField] DateTime");
+            Assert.That(Pairs(facets.For(p => p.Date)), Is.EqualTo(new[] { "jan=1" }), "[Field] DateTime");
+        }
+
+        [Test]
         public void ToDocument_NumericField_WritesHiddenRangeColumn_AndReplacesOnReuse()
         {
             var mapper = new ReflectionDocumentMapper<FacetEvent>(version, null);
