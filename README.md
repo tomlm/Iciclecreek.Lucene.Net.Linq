@@ -591,7 +591,8 @@ How it behaves:
     numeric doc-values, so range counts don't work on them.
 - **Vector queries:** facets count the same resolved query as the
   results. For a pure `.Similar(...)` query the matching set is the K
-  nearest neighbours, where K is the `Take` value (10 without a `Take`).
+  nearest neighbours, where K is the `Take` value (10 without a `Take`
+  or with `Take(0)`).
   With other predicates, the predicates decide the matching set.
 - **Existing indexes:** documents written before `Facet` was set have
   neither facet values nor the `{Field}$range` column. They are still

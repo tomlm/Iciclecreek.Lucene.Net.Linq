@@ -106,9 +106,9 @@ namespace Lucene.Net.Linq
         /// </para>
         /// <para>
         /// For a pure vector query the matching set is the K nearest neighbours,
-        /// where K is the <c>Take</c> value (10 when there is no <c>Take</c>), so
-        /// counts cover only those documents. With other predicates, those
-        /// predicates decide the matching set.
+        /// where K is the <c>Take</c> value (10 when there is no <c>Take</c> or
+        /// with <c>Take(0)</c>), so counts cover only those documents. With other
+        /// predicates, those predicates decide the matching set.
         /// </para>
         /// </remarks>
         /// <param name="source">The query.</param>
