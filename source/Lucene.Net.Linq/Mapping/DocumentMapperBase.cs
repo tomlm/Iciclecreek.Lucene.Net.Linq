@@ -173,30 +173,43 @@ namespace Lucene.Net.Linq.Mapping
             target.RemoveFields(FacetsConfig.DEFAULT_INDEX_FIELD_NAME);
 
             Document facetDocument = null;
-            FacetsConfig config = null;
+            HashSet<string> seen = null;
 
             foreach (var mapper in fieldMap.Values)
             {
                 if (!(mapper is IFacetFieldMapper<T> facetMapper) || !facetMapper.Facet) continue;
 
                 var dimension = facetMapper.FieldName;
+                string first = null;
+                seen?.Clear();
 
-                foreach (var label in facetMapper.GetFacetValues(source).Where(l => !string.IsNullOrEmpty(l)).Distinct(StringComparer.Ordinal))
+                foreach (var label in facetMapper.GetFacetValues(source))
                 {
-                    if (facetDocument == null)
+                    if (string.IsNullOrEmpty(label)) continue;
+
+                    // De-duplicate without allocating for the common
+                    // single-value case: the set is only created (once per
+                    // document) when a field yields a second value.
+                    if (first == null)
                     {
-                        facetDocument = new Document();
-                        config = new FacetsConfig();
+                        first = label;
+                    }
+                    else
+                    {
+                        if (seen == null) seen = new HashSet<string>(StringComparer.Ordinal);
+                        if (seen.Count == 0) seen.Add(first);
+                        if (!seen.Add(label)) continue;
                     }
 
-                    config.SetMultiValued(dimension, true);
+                    if (facetDocument == null) facetDocument = new Document();
+
                     facetDocument.Add(new SortedSetDocValuesFacetField(dimension, label));
                 }
             }
 
             if (facetDocument == null) return;
 
-            foreach (var field in config.Build(facetDocument).Fields)
+            foreach (var field in MultiValuedFacetsConfig.Instance.Build(facetDocument).Fields)
             {
                 target.Add(field);
             }

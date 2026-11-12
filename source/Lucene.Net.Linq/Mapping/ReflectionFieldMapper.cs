@@ -43,6 +43,8 @@ namespace Lucene.Net.Linq.Mapping
         protected readonly bool docValues;
         protected readonly bool facet;
         private readonly FieldType fieldType;
+        private readonly string hiddenRangeField;
+        private readonly NumericFieldType hiddenRangeType = NumericFieldType.NONE;
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector,
                                      TypeConverter converter, string fieldName, bool caseSensitive, Analyzer analyzer)
@@ -86,6 +88,13 @@ namespace Lucene.Net.Linq.Mapping
             this.nativeSort = nativeSort;
             this.docValues = docValues;
             this.fieldType = FieldTypeBuilder.Build(store, index, termVector);
+
+            // Resolved once: these are read for every document written.
+            if (facet && TryGetHiddenRangeType(out var rangeType))
+            {
+                this.hiddenRangeField = fieldName + RangeFacetFieldSuffix;
+                this.hiddenRangeType = rangeType;
+            }
         }
 
         public virtual Analyzer Analyzer => analyzer;
@@ -103,11 +112,9 @@ namespace Lucene.Net.Linq.Mapping
         public virtual bool DocValues => docValues;
         public virtual bool Facet => facet;
 
-        public virtual string RangeFacetField =>
-            facet && TryGetHiddenRangeType(out _) ? fieldName + RangeFacetFieldSuffix : null;
+        public virtual string RangeFacetField => hiddenRangeField;
 
-        public virtual NumericFieldType RangeFacetValueType =>
-            facet && TryGetHiddenRangeType(out var type) ? type : NumericFieldType.NONE;
+        public virtual NumericFieldType RangeFacetValueType => hiddenRangeType;
 
         public virtual object GetPropertyValue(T source) => propertyGetter(source);
 
@@ -143,7 +150,9 @@ namespace Lucene.Net.Linq.Mapping
         {
             if (value == null) return null;
 
-            if (!TryGetHiddenRangeType(out var type))
+            var type = hiddenRangeType;
+
+            if (type == NumericFieldType.NONE)
                 throw new NotSupportedException("Property " + PropertyName + " does not support range facets.");
 
             switch (value)

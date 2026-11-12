@@ -463,6 +463,18 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(doc.GetFields(FacetsConfig.DEFAULT_INDEX_FIELD_NAME).Length, Is.EqualTo(facetFields.Length), "facet fields are replaced, not duplicated");
             Assert.That(doc.GetFields("Date" + ReflectionFieldMapper<Passage>.RangeFacetFieldSuffix).Length, Is.EqualTo(1));
         }
+
+        [Test]
+        public void DuplicateValuesInOneDocument_CountOnce()
+        {
+            Add(new Passage { Id = "1", Pile = "news", Topics = new[] { "a", "a", "b", "a" }, People = new List<string> { "Ann", "Ann" } });
+            Add(new Passage { Id = "2", Pile = "news", Topics = new[] { "a" }, People = new List<string> { "Bob" } });
+
+            Passages.Facets(out var facets, f => f.Count(p => p.Topics).Count(p => p.People)).ToList();
+
+            Assert.That(Pairs(facets.For(p => p.Topics)), Is.EqualTo(new[] { "a=2", "b=1" }));
+            Assert.That(Pairs(facets.For(p => p.People)), Is.EqualTo(new[] { "Ann=1", "Bob=1" }));
+        }
     }
 
 #if NET8_0_OR_GREATER
