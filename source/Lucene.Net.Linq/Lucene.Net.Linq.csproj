@@ -13,7 +13,7 @@
     <!-- Package metadata (moved from .nuspec) -->
     <IsPackable>true</IsPackable>
     <PackageId>Iciclecreek.Lucene.Net.Linq</PackageId>
-    <Version>4.8.6-beta00018</Version>
+    <Version>4.8.7-beta00018</Version>
     <Title>Iciclecreek.Lucene.Net.Linq</Title>
     <Authors>Chris Eldredge/Tom Laird-McConnell</Authors>
     <Owners>The Motley Fool, LLC</Owners>

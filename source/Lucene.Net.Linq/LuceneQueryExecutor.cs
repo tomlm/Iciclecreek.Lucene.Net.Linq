@@ -501,16 +501,18 @@ namespace Lucene.Net.Linq
 
         /// <summary>
         /// Runs the search, also feeding <paramref name="facetsCollector"/> in the
-        /// same pass when facets were requested.
+        /// same pass when facets were requested. Document scores are computed
+        /// either way (they are off by default for a sorted search), so
+        /// <c>[QueryScore]</c> properties are filled with and without facets.
         /// </summary>
         private static TopFieldDocs Search(IndexSearcher searcher, Query query, Filter filter, int n, Sort sort, FacetsCollector facetsCollector)
         {
             if (facetsCollector == null)
             {
-                return searcher.Search(query, filter, n, sort);
+                return searcher.Search(query, filter, n, sort, doDocScores: true, doMaxScore: false);
             }
 
-            return (TopFieldDocs)FacetsCollector.Search(searcher, query, filter, n, sort, facetsCollector);
+            return (TopFieldDocs)FacetsCollector.Search(searcher, query, filter, n, sort, true, false, facetsCollector);
         }
 
         /// <summary>
