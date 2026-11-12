@@ -117,16 +117,18 @@ namespace Lucene.Net.Linq.Mapping
         /// </para>
         /// <para>
         /// Single-valued numeric, <see cref="DateTime"/> and <see cref="DateTimeOffset"/>
-        /// properties also support range counts. A <see cref="NumericFieldAttribute"/>
-        /// property writes its value to a numeric doc-values column under its own
-        /// field name. Any other numeric or date property keeps its existing string
-        /// field and gets a hidden numeric column named <c>{Field}$range</c>; dates
-        /// are stored there as UTC ticks. Collection properties support value
+        /// properties also support range counts. Their value is written to a
+        /// hidden numeric doc-values column named <c>{Field}$range</c>; the
+        /// property's own field is unchanged, and <c>Facet</c> does not turn on
+        /// <see cref="DocValues"/>. A <see cref="NumericFieldAttribute"/> property
+        /// stores there the number it indexes (ticks for dates). Any other date
+        /// property stores UTC ticks. Collection properties support value
         /// counts only.
         /// </para>
         /// <para>
-        /// Documents indexed before this flag was set have no facet data and are
-        /// not counted until they are re-indexed.
+        /// Documents indexed before this flag was set have neither facet values
+        /// nor the range column. They are not counted, by value or by range,
+        /// until they are re-indexed.
         /// </para>
         /// </remarks>
         public bool Facet { get; set; }

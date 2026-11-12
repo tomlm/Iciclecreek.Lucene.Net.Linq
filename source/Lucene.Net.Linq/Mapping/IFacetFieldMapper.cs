@@ -18,13 +18,22 @@ namespace Lucene.Net.Linq.Mapping
         /// <summary>
         /// Name of the numeric doc-values field used for range counts,
         /// or <c>null</c> when the field does not support range counts.
+        /// The built-in mappers use a hidden field named <c>{Field}$range</c>.
         /// </summary>
+        /// <remarks>
+        /// Use a field that is not also indexed. In a segment where the field
+        /// has no doc values, Lucene's FieldCache un-inverts its indexed terms,
+        /// so documents written before the column existed would be counted
+        /// (or fail to decode) instead of being skipped.
+        /// </remarks>
         string RangeFacetField { get; }
 
         /// <summary>
         /// How values in <see cref="RangeFacetField"/> are encoded:
-        /// <see cref="NumericFieldType.INT64"/>, <see cref="NumericFieldType.DOUBLE"/>
-        /// or <see cref="NumericFieldType.SINGLE"/>.
+        /// <see cref="NumericFieldType.INT64"/> (a <c>NumericDocValuesField</c>) or
+        /// <see cref="NumericFieldType.DOUBLE"/> (a <c>DoubleDocValuesField</c>).
+        /// <see cref="NumericFieldType.NONE"/> when the field does not support
+        /// range counts. Other encodings are not read.
         /// </summary>
         NumericFieldType RangeFacetValueType { get; }
 

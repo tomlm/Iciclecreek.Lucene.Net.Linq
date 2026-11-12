@@ -22,7 +22,8 @@ namespace Lucene.Net.Linq.Mapping
     {
         /// <summary>
         /// Suffix of the hidden numeric doc-values field written for range
-        /// facets on properties that are not mapped as numeric fields.
+        /// facets: <c>{Field}$range</c>. The field has no indexed terms, so
+        /// documents written before <c>Facet</c> was set are not counted.
         /// </summary>
         public const string RangeFacetFieldSuffix = "$range";
 

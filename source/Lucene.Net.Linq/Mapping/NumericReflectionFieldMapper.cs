@@ -20,6 +20,7 @@ namespace Lucene.Net.Linq.Mapping
 
         private readonly TypeConverter typeToValueTypeConverter;
         private readonly int precisionStep;
+        private readonly string rangeFacetField;
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost)
             : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues: false)
@@ -36,14 +37,20 @@ namespace Lucene.Net.Linq.Mapping
         {
             this.typeToValueTypeConverter = typeToValueTypeConverter;
             this.precisionStep = precisionStep;
+            this.rangeFacetField = facet ? fieldName + RangeFacetFieldSuffix : null;
         }
 
         /// <summary>
-        /// Numeric fields keep range-facet values in a numeric doc-values
-        /// column under their own field name (the same column
-        /// <c>DocValues = true</c> writes).
+        /// Numeric fields keep range-facet values in the hidden
+        /// <c>{Field}$range</c> doc-values column, as other properties do, and
+        /// not in the column <c>DocValues = true</c> writes under the field's
+        /// own name. Range counts read through FieldCache, which un-inverts the
+        /// indexed terms of a segment that lacks the doc-values column. For the
+        /// field's own name that would count documents written before
+        /// <c>Facet</c> was set, and throw where the terms are Int32. The hidden
+        /// field has no terms, so such segments are skipped.
         /// </summary>
-        public override string RangeFacetField => facet ? fieldName : null;
+        public override string RangeFacetField => rangeFacetField;
 
         public override NumericFieldType RangeFacetValueType
         {
@@ -57,8 +64,8 @@ namespace Lucene.Net.Linq.Mapping
 
                 if (type != null && type.IsEnum) type = Enum.GetUnderlyingType(type);
 
-                if (type == typeof(double)) return NumericFieldType.DOUBLE;
-                if (type == typeof(float)) return NumericFieldType.SINGLE;
+                // The range column widens int to long and float to double.
+                if (type == typeof(double) || type == typeof(float)) return NumericFieldType.DOUBLE;
                 return NumericFieldType.INT64;
             }
         }
@@ -151,6 +158,11 @@ namespace Lucene.Net.Linq.Mapping
 
             target.RemoveFields(fieldName);
 
+            // Also when the value is null: a reused document may hold the
+            // range column of an earlier value.
+            var rangeField = rangeFacetField;
+            if (rangeField != null) target.RemoveFields(rangeField);
+
             if (value == null) return;
 
             value = ConvertToSupportedValueType(value);
@@ -165,26 +177,31 @@ namespace Lucene.Net.Linq.Mapping
             var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
             Field numericField;
 
-            // Facet range counts read the same numeric doc-values column.
-            var docValues = this.docValues || facet;
+            // The range column holds the indexed number as a long or a double
+            // (see RangeFacetValueType), whatever the width of the field itself.
             Field dvField = null;
+            Field rangeDvField = null;
             switch (value)
             {
                 case int i:
                     numericField = new Int32Field(fieldName, i, fieldStore);
                     if (docValues) dvField = new NumericDocValuesField(fieldName, i);
+                    if (rangeField != null) rangeDvField = new NumericDocValuesField(rangeField, i);
                     break;
                 case long l:
                     numericField = new Int64Field(fieldName, l, fieldStore);
                     if (docValues) dvField = new NumericDocValuesField(fieldName, l);
+                    if (rangeField != null) rangeDvField = new NumericDocValuesField(rangeField, l);
                     break;
                 case float f:
                     numericField = new SingleField(fieldName, f, fieldStore);
                     if (docValues) dvField = new SingleDocValuesField(fieldName, f);
+                    if (rangeField != null) rangeDvField = new DoubleDocValuesField(rangeField, f);
                     break;
                 case double d:
                     numericField = new DoubleField(fieldName, d, fieldStore);
                     if (docValues) dvField = new DoubleDocValuesField(fieldName, d);
+                    if (rangeField != null) rangeDvField = new DoubleDocValuesField(rangeField, d);
                     break;
                 default:
                     throw new ArgumentException("Unable to store ValueType " + value.GetType() + " as a numeric field.", nameof(source));
@@ -195,6 +212,7 @@ namespace Lucene.Net.Linq.Mapping
             // norms). Boost is silently dropped if not the default.
             target.Add(numericField);
             if (dvField != null) target.Add(dvField);
+            if (rangeDvField != null) target.Add(rangeDvField);
         }
 
         public override string ConvertToQueryExpression(object value)

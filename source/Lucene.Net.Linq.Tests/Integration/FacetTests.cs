@@ -46,6 +46,22 @@ namespace Lucene.Net.Linq.Tests.Integration
         public string NotFaceted { get; set; }
     }
 
+    public class FacetEvent
+    {
+        [Field(IndexMode.NotAnalyzed, Key = true)]
+        public string Id { get; set; }
+
+        [NumericField(Facet = true)]
+        public DateTimeOffset When { get; set; }
+
+        [NumericField(Facet = true)]
+        public long? Size { get; set; }
+
+        // Both options: the own-name column for sorting and the hidden range column.
+        [NumericField(Facet = true, DocValues = true)]
+        public int Rank { get; set; }
+    }
+
     [TestFixture]
     public class FacetTests
     {
@@ -300,6 +316,106 @@ namespace Lucene.Net.Linq.Tests.Integration
             results = Passages.Facets(out facets, f => f.Count(p => p.Pile)).ToList();
             Assert.That(results.Count, Is.EqualTo(2));
             Assert.That(Pairs(facets.For(p => p.Pile)), Is.EqualTo(new[] { "news=1" }));
+        }
+
+        [Test]
+        public void DocumentsWithoutFacetFields_NumericRanges_CountOnlyReindexedDocuments()
+        {
+            // A mapping without facets indexes the same numeric fields as terms only:
+            // Pages as Int32, Published as Int64 ticks, Score as double, Weight as float.
+            // Range counts read the hidden {Field}$range column, which those segments
+            // don't have, so they must neither un-invert the terms (which throws for
+            // Int32 terms read as Int64) nor count the old document.
+            var legacy = new ClassMap<Passage>(version);
+            legacy.Key(p => p.Id).NotAnalyzed();
+            legacy.Property(p => p.Pile).NotAnalyzed();
+            legacy.Property(p => p.Pages).AsNumericField();
+            legacy.Property(p => p.Published).AsNumericField();
+            legacy.Property(p => p.Score).AsNumericField();
+            legacy.Property(p => p.Weight).AsNumericField();
+            using (var session = provider.OpenSession(legacy.ToDocumentMapper()))
+            {
+                session.Add(new Passage { Id = "old", Pile = "news", Published = Utc(2026, 1, 15), Pages = 10, Score = 0.5, Weight = 0.5f });
+                session.Commit();
+            }
+
+            var all = new[] { new FacetRange("all", null, null) };
+            Action<FacetRequest<Passage>> ranges = f => f
+                .Ranges(p => p.Pages, all)
+                .Ranges(p => p.Published, all)
+                .Ranges(p => p.Score, all)
+                .Ranges(p => p.Weight, all);
+
+            var results = Passages.Facets(out var facets, ranges).ToList();
+            Assert.That(results.Select(r => r.Id), Is.EqualTo(new[] { "old" }));
+            AssertRangeCounts(facets, "all=0", "no document in the index has range columns yet");
+
+            Add(new Passage { Id = "new", Pile = "news", Published = Utc(2026, 2, 10), Pages = 20, Score = 1.5, Weight = 1.5f });
+
+            results = Passages.Facets(out facets, ranges).ToList();
+            Assert.That(results.Count, Is.EqualTo(2));
+            AssertRangeCounts(facets, "all=1", "only the re-indexed document is counted");
+
+            // The collector visits every segment, also the ones without a hit.
+            results = Passages.Where(p => p.Id == "new").Facets(out facets, ranges).ToList();
+            Assert.That(results.Count, Is.EqualTo(1));
+            AssertRangeCounts(facets, "all=1", "query narrowed to the re-indexed document");
+
+            // The old document is still found and sorted by its numeric fields.
+            Assert.That(Passages.Where(p => p.Pages >= 10).OrderBy(p => p.Pages).Select(p => p.Id).ToList(), Is.EqualTo(new[] { "old", "new" }));
+        }
+
+        private static void AssertRangeCounts(FacetResults<Passage> facets, string expected, string message)
+        {
+            Assert.That(Pairs(facets.For(p => p.Pages)), Is.EqualTo(new[] { expected }), "int: " + message);
+            Assert.That(Pairs(facets.For(p => p.Published)), Is.EqualTo(new[] { expected }), "DateTime (long): " + message);
+            Assert.That(Pairs(facets.For(p => p.Score)), Is.EqualTo(new[] { expected }), "double: " + message);
+            Assert.That(Pairs(facets.For(p => p.Weight)), Is.EqualTo(new[] { expected }), "float: " + message);
+        }
+
+        [Test]
+        public void Ranges_NumericField_NullValuesAreNotCounted()
+        {
+            Add(new FacetEvent { Id = "1", When = Utc(2026, 1, 15), Size = 5, Rank = 1 },
+                new FacetEvent { Id = "2", When = Utc(2026, 1, 16), Size = null, Rank = 2 });
+
+            var results = provider.AsQueryable<FacetEvent>()
+                .Facets(out var facets, f => f
+                    .Ranges(p => p.Size, new[] { new FacetRange("all", null, null), new FacetRange("< 10", null, 10L) })
+                    .Ranges(p => p.Rank, new[] { new FacetRange("all", null, null), new FacetRange("2+", 2, null) }))
+                .OrderByDescending(p => p.Rank)
+                .ToList();
+
+            Assert.That(results.Select(r => r.Id), Is.EqualTo(new[] { "2", "1" }));
+            Assert.That(Pairs(facets.For(p => p.Size)), Is.EqualTo(new[] { "all=1", "< 10=1" }));
+            Assert.That(Pairs(facets.For(p => p.Rank)), Is.EqualTo(new[] { "all=2", "2+=1" }));
+        }
+
+        [Test]
+        public void ToDocument_NumericField_WritesHiddenRangeColumn_AndReplacesOnReuse()
+        {
+            var mapper = new ReflectionDocumentMapper<FacetEvent>(version, null);
+            var doc = new Document();
+            const string suffix = ReflectionFieldMapper<FacetEvent>.RangeFacetFieldSuffix;
+
+            mapper.ToDocument(new FacetEvent { Id = "1", When = Utc(2026, 1, 15), Size = 5, Rank = 1 }, doc);
+
+            // Facet alone adds no doc-values column under the field's own name.
+            Assert.That(doc.GetFields("Size").Length, Is.EqualTo(1), "indexed field only");
+            Assert.That(doc.GetFields("When").Length, Is.EqualTo(1), "indexed field only");
+            Assert.That(doc.GetFields("Rank").Length, Is.EqualTo(2), "indexed field and the DocValues = true column");
+            Assert.That(doc.GetField("Size" + suffix).GetInt64Value(), Is.EqualTo(5L));
+            Assert.That(doc.GetField("When" + suffix).GetInt64Value(), Is.EqualTo(Utc(2026, 1, 15).Ticks));
+            Assert.That(doc.GetField("Rank" + suffix).GetInt64Value(), Is.EqualTo(1L));
+
+            mapper.ToDocument(new FacetEvent { Id = "1", When = Utc(2026, 1, 16), Size = null, Rank = 2 }, doc);
+
+            Assert.That(doc.GetFields("Size"), Is.Empty);
+            Assert.That(doc.GetFields("Size" + suffix), Is.Empty, "a null value removes the earlier range column");
+            Assert.That(doc.GetFields("When" + suffix).Length, Is.EqualTo(1), "range columns are replaced, not duplicated");
+            Assert.That(doc.GetFields("Rank").Length, Is.EqualTo(2));
+            Assert.That(doc.GetFields("Rank" + suffix).Length, Is.EqualTo(1));
+            Assert.That(doc.GetField("Rank" + suffix).GetInt64Value(), Is.EqualTo(2L));
         }
 
         [Test]

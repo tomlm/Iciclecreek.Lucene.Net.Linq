@@ -5,8 +5,10 @@ Adds facet counting via `Lucene.Net.Facet` 4.8.0-beta00018 (sorted-set doc-value
 - **Mapping:** new `Facet` option on `[Field]` / `[NumericField]` (`BaseFieldAttribute.Facet`) and `PropertyMap<T>.Facet()` in the fluent mapping. Works on collection properties. The existing `DocValues` downgrade on collections is unchanged.
 - **Writing:** `DocumentMapperBase<T>.MapFieldsToDocument` writes facet values to the shared `$facets` field in the caller's document. It builds them with `FacetsConfig.Build` on a scratch document, then appends the result, replacing any earlier facet fields. Facet field mappers are found at write time, so mappers added with `AddField` / `AddKeyField` are included.
 - **Range counts:**
-  - `[NumericField(Facet = true)]` writes a numeric doc-values column under the field name.
-  - Other single-valued numeric, `DateTime` and `DateTimeOffset` properties get a hidden `{Field}$range` column. Dates are stored there as UTC ticks; the string field is unchanged.
+  - Single-valued numeric, `DateTime` and `DateTimeOffset` properties get a hidden `{Field}$range` doc-values column. The property's own field is unchanged.
+  - `[NumericField(Facet = true)]` stores the number it indexes there, as a `long` or a `double`. `Facet` does not turn on `DocValues`.
+  - Other date properties store UTC ticks there.
+  - The hidden column has no indexed terms, so documents written before `Facet` was set are not counted until re-indexed.
 - **Query:** new `LuceneMethods.Facets(out FacetResults<T>, f => f.Count(...).Ranges(...))` extension clause (same pattern as `CaptureStatistics`).
   - Counts are collected in the same search pass as the hits (`FacetsCollector.Search`).
   - They use the vector-resolved query.

@@ -628,18 +628,20 @@ namespace Lucene.Net.Linq
 
                 counts = new Int64RangeFacetCounts(field, facetsCollector, ranges);
             }
-            else
+            else if (info.RangeFacetValueType == NumericFieldType.DOUBLE)
             {
                 var ranges = spec.Ranges.Select(r => new DoubleRange(r.Label,
                     r.Min == null ? double.NegativeInfinity : Convert.ToDouble(info.ConvertToRangeFacetValue(r.Min)), r.Min == null || r.MinInclusive,
                     r.Max == null ? double.PositiveInfinity : Convert.ToDouble(info.ConvertToRangeFacetValue(r.Max)), r.Max == null || r.MaxInclusive)).ToArray();
 
-                // Single-precision columns store float bits, so read them as floats.
-                Lucene.Net.Queries.Function.ValueSource valueSource = info.RangeFacetValueType == NumericFieldType.SINGLE
-                    ? new Lucene.Net.Queries.Function.ValueSources.SingleFieldSource(field)
-                    : new Lucene.Net.Queries.Function.ValueSources.DoubleFieldSource(field);
-
-                counts = new DoubleRangeFacetCounts(field, valueSource, facetsCollector, ranges);
+                counts = new DoubleRangeFacetCounts(field, facetsCollector, ranges);
+            }
+            else
+            {
+                // Reading a column with the wrong decoder would return wrong counts silently.
+                throw new NotSupportedException(string.Format(
+                    "Range facet field {0} of property {1} is encoded as {2}. Range counts read INT64 or DOUBLE columns only.",
+                    field, info.PropertyName, info.RangeFacetValueType));
             }
 
             var result = counts.GetTopChildren(spec.Ranges.Count, field);

@@ -161,7 +161,7 @@ one of the four primitive numeric types.
 | `Converter` | built-in for `DateTime`/`DateTimeOffset` | `TypeConverter` mapping the property type to one of `int`/`long`/`float`/`double`. |
 | `PrecisionStep` | `NumericUtils.PRECISION_STEP_DEFAULT` | Trie granularity. Smaller = faster range queries, larger index. |
 | `DocValues` | `false` | Writes a parallel `NumericDocValuesField` / `SingleDocValuesField` / `DoubleDocValuesField` column. Opt in for fast sort. |
-| `Facet` | `false` | Value and range counts with `.Facets(...)`. Writes the same numeric column as `DocValues`. See [Facets](#facets). |
+| `Facet` | `false` | Value and range counts with `.Facets(...)`. Range values go to a hidden `{Field}$range` doc-values column; the `DocValues` column is separate and not implied. See [Facets](#facets). |
 
 #### Other attributes
 
@@ -572,22 +572,26 @@ How it behaves:
   Ranges are half-open (`[min, max)`) by default. A document is counted
   in every range that contains its value. `FacetRange.Daily`, `Monthly`
   and `Yearly` build date buckets.
-- **Where range values come from:**
-  - **Numeric fields:** `[NumericField(Facet = true)]` writes the value
-    to a numeric doc-values column under the field's own name.
-  - **Other numeric and date properties:** these keep their string
-    field and get a hidden numeric column named `{Field}$range`, so
-    existing queries, sorting and `Format` are unchanged. Dates are
-    stored there as UTC ticks.
+- **Where range values come from:** a hidden numeric doc-values column
+  named `{Field}$range`. The property's own field is unchanged, so
+  existing queries, sorting and `Format` behave as before.
+  - **Numeric fields:** `[NumericField(Facet = true)]` stores the number
+    it indexes, as a `long` or a `double`. For dates that is the ticks
+    the built-in converter produces: UTC ticks for `DateTime`,
+    `DateTimeOffset.Ticks` for `DateTimeOffset`. `Facet` does not turn
+    on `DocValues`; set both to get the sort column as well.
+  - **Other numeric and date properties:** dates are stored as UTC
+    ticks.
   - **Collections:** value counts only. Lucene 4.8 has no multi-valued
     numeric doc-values, so range counts don't work on them.
 - **Vector queries:** facets count the same resolved query as the
   results. For a pure `.Similar(...)` query the matching set is the K
   nearest neighbours, where K is the `Take` value (10 without a `Take`).
   With other predicates, the predicates decide the matching set.
-- **Existing indexes:** documents written before `Facet` was set have no
-  facet data. They are still returned by queries, but they aren't
-  counted until they are re-indexed.
+- **Existing indexes:** documents written before `Facet` was set have
+  neither facet values nor the `{Field}$range` column. They are still
+  returned by queries, but they aren't counted, by value or by range,
+  until they are re-indexed.
 - **Reader state:** the facet ordinal map is built on the first facet
   query after each searcher (re)load and cached for that searcher.
 - **Custom field mappers:** a mapper added with `AddField` takes part
