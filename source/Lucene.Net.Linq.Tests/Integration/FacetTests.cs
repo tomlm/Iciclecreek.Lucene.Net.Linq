@@ -62,6 +62,18 @@ namespace Lucene.Net.Linq.Tests.Integration
         public int Rank { get; set; }
     }
 
+    public class ScoredPassage
+    {
+        [Field(IndexMode.NotAnalyzed, Key = true)]
+        public string Id { get; set; }
+
+        [Field(IndexMode.NotAnalyzed, Facet = true)]
+        public string Pile { get; set; }
+
+        [QueryScore]
+        public float Score { get; set; }
+    }
+
     [TestFixture]
     public class FacetTests
     {
@@ -481,6 +493,35 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(doc.GetFields("Rank").Length, Is.EqualTo(2));
             Assert.That(doc.GetFields("Rank" + suffix).Length, Is.EqualTo(1));
             Assert.That(doc.GetField("Rank" + suffix).GetInt64Value(), Is.EqualTo(2L));
+        }
+
+        [Test]
+        public void QueryScoreProperty_IsFilledWhenFacetsAreCounted()
+        {
+            Add(new ScoredPassage { Id = "1", Pile = "news" },
+                new ScoredPassage { Id = "2", Pile = "blog" },
+                new ScoredPassage { Id = "3", Pile = "news" });
+
+            // The search that also feeds the facets collector must compute document
+            // scores, like the plain search does; a sorted search leaves them NaN otherwise.
+            var byRelevance = provider.AsQueryable<ScoredPassage>()
+                .Where(p => p.Pile == "news")
+                .Facets(out var facets, f => f.Count(p => p.Pile))
+                .ToList();
+
+            Assert.That(byRelevance.Count, Is.EqualTo(2));
+            Assert.That(byRelevance.All(p => p.Score > 0), Is.True, string.Join(", ", byRelevance.Select(p => p.Score)));
+            Assert.That(Pairs(facets.For(p => p.Pile)), Is.EqualTo(new[] { "news=2" }));
+
+            var byId = provider.AsQueryable<ScoredPassage>()
+                .Where(p => p.Pile == "news")
+                .Facets(out facets, f => f.Count(p => p.Pile))
+                .OrderByDescending(p => p.Id)
+                .ToList();
+
+            Assert.That(byId.Select(p => p.Id), Is.EqualTo(new[] { "3", "1" }));
+            Assert.That(byId.All(p => p.Score > 0), Is.True, string.Join(", ", byId.Select(p => p.Score)));
+            Assert.That(Pairs(facets.For(p => p.Pile)), Is.EqualTo(new[] { "news=2" }));
         }
 
         [Test]
