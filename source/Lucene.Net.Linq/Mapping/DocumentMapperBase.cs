@@ -5,6 +5,8 @@ using System.Linq;
 using Lucene.Net.Analysis;
 using Lucene.Net.Analysis.Core;
 using Lucene.Net.Documents;
+using Lucene.Net.Facet;
+using Lucene.Net.Facet.SortedSet;
 using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Util;
 using Lucene.Net.QueryParsers.Classic;
@@ -148,6 +150,55 @@ namespace Lucene.Net.Linq.Mapping
             {
                 target.Add(new StringField(TypeUtils.TYPES_FIELD,
                     type.FullName, Field.Store.YES));
+            }
+
+            AddFacetFields(source, target);
+        }
+
+        /// <summary>
+        /// Writes facet values from every <see cref="IFacetFieldMapper{T}"/> in the
+        /// field map to the shared facet field (<see cref="FacetsConfig.DEFAULT_INDEX_FIELD_NAME"/>),
+        /// using the facet field mapper's <see cref="IFieldMappingInfo.FieldName"/> as the dimension.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="FacetsConfig.Build(Document)"/> returns a new document, but
+        /// <see cref="ToDocument(T, Document)"/> fills one the caller owns. The facet
+        /// fields are therefore built on a scratch document and the encoded fields
+        /// are appended to <paramref name="target"/>. Facet field mappers are found
+        /// at write time, so mappers added with <see cref="AddField"/> or directly to
+        /// <c>fieldMap</c> are included.
+        /// </remarks>
+        protected virtual void AddFacetFields(T source, Document target)
+        {
+            target.RemoveFields(FacetsConfig.DEFAULT_INDEX_FIELD_NAME);
+
+            Document facetDocument = null;
+            FacetsConfig config = null;
+
+            foreach (var mapper in fieldMap.Values)
+            {
+                if (!(mapper is IFacetFieldMapper<T> facetMapper) || !facetMapper.Facet) continue;
+
+                var dimension = facetMapper.FieldName;
+
+                foreach (var label in facetMapper.GetFacetValues(source).Where(l => !string.IsNullOrEmpty(l)).Distinct(StringComparer.Ordinal))
+                {
+                    if (facetDocument == null)
+                    {
+                        facetDocument = new Document();
+                        config = new FacetsConfig();
+                    }
+
+                    config.SetMultiValued(dimension, true);
+                    facetDocument.Add(new SortedSetDocValuesFacetField(dimension, label));
+                }
+            }
+
+            if (facetDocument == null) return;
+
+            foreach (var field in config.Build(facetDocument).Fields)
+            {
+                target.Add(field);
             }
         }
 

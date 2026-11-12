@@ -138,6 +138,7 @@ public class Article
 | `TermVector` | `No` | `No`, `Yes`, `WithPositions`, `WithOffsets`, `WithPositionsOffsets`. |
 | `NativeSort` | `false` | When `true`, sort uses byte-wise string comparison instead of `IComparable.CompareTo`. Only meaningful when the converter's string output is alphanumerically sortable. |
 | `DocValues` | `false` | Write a parallel `SortedDocValuesField` column. Opt in for fast sort/group/facet on hot fields. |
+| `Facet` | `false` | Make the property's values countable with `.Facets(...)`. Works on collections. Numeric and date properties also support range counts. See [Facets](#facets). |
 
 #### `[NumericField]` options
 
@@ -156,6 +157,7 @@ one of the four primitive numeric types.
 | `Converter` | built-in for `DateTime`/`DateTimeOffset` | `TypeConverter` mapping the property type to one of `int`/`long`/`float`/`double`. |
 | `PrecisionStep` | `NumericUtils.PRECISION_STEP_DEFAULT` | Trie granularity. Smaller = faster range queries, larger index. |
 | `DocValues` | `false` | Writes a parallel `NumericDocValuesField` / `SingleDocValuesField` / `DoubleDocValuesField` column. Opt in for fast sort. |
+| `Facet` | `false` | Value and range counts with `.Facets(...)`. Writes the same numeric column as `DocValues`. See [Facets](#facets). |
 
 #### Other attributes
 
@@ -499,6 +501,94 @@ Without DocValues, the first sort on a field per segment uninverts
 the inverted index via `FieldCache` — correct, but pays an O(n) cost
 on first touch and holds the result in memory. With DocValues, the
 sort reads directly from a packed column.
+
+## Facets
+
+`.Facets(...)` counts how many matching documents carry each value of
+one or more properties, and how they fall into ranges, in the same
+search pass that produces the results. It uses Lucene's sorted-set
+doc-values facets (no taxonomy index).
+
+Mark the properties to count:
+
+```csharp
+public class Passage
+{
+    [Field(IndexMode.NotAnalyzed, Facet = true)]
+    public string Pile { get; set; }
+
+    [Field(IndexMode.NotAnalyzed, Facet = true)]
+    public string[] Topics { get; set; }          // collections work
+
+    [Field(Facet = true)]
+    public DateTime Date { get; set; }            // value and range counts
+
+    [NumericField(Facet = true)]
+    public int Pages { get; set; }
+}
+
+// fluent equivalent
+map.Property(p => p.Topics).NotAnalyzed().Facet();
+map.Property(p => p.Pages).AsNumericField().Facet();
+```
+
+Then ask for counts on any query:
+
+```csharp
+var page = provider.AsQueryable<Passage>()
+    .Where(p => p.Pile == "news")
+    .Facets(out var facets, f => f
+        .Count(p => p.Topics)                   // every value, by count descending
+        .Count(p => p.Pile, top: 10)            // at most 10 values
+        .Ranges(p => p.Date, FacetRange.Monthly(start, end))
+        .Ranges(p => p.Pages, new[]
+        {
+            new FacetRange("short", null, 100),  // null = unbounded
+            new FacetRange("long", 100, null),
+        }))
+    .Take(20)
+    .ToList();
+
+foreach (var v in facets.For(p => p.Topics))
+    Console.WriteLine($"{v.Label}: {v.Count}");
+```
+
+How it behaves:
+
+- **Counts cover every matching document**, regardless of `Skip`/`Take`.
+  `Take(0)` and `Count()` also fill them.
+- **Counts are filled when the query executes.** Reading `facets`
+  before then throws, and re-running the query replaces them. Call
+  `.Facets(...)` before any `Select`.
+- **Value counts** are ordered by count descending, then by value. A
+  label is the value as indexed (the converter's string output); it is
+  not analyzed, so `"Berlin"` and `"berlin"` are separate values. Null
+  and empty values are skipped.
+- **Range counts** are returned in the order the ranges were given.
+  Ranges are half-open (`[min, max)`) by default. A document is counted
+  in every range that contains its value. `FacetRange.Daily`, `Monthly`
+  and `Yearly` build date buckets.
+- **Where range values come from:**
+  - **Numeric fields:** `[NumericField(Facet = true)]` writes the value
+    to a numeric doc-values column under the field's own name.
+  - **Other numeric and date properties:** these keep their string
+    field and get a hidden numeric column named `{Field}$range`, so
+    existing queries, sorting and `Format` are unchanged. Dates are
+    stored there as UTC ticks.
+  - **Collections:** value counts only. Lucene 4.8 has no multi-valued
+    numeric doc-values, so range counts don't work on them.
+- **Vector queries:** facets count the same resolved query as the
+  results. For a pure `.Similar(...)` query the matching set is the K
+  nearest neighbours, where K is the `Take` value (10 without a `Take`).
+  With other predicates, the predicates decide the matching set.
+- **Existing indexes:** documents written before `Facet` was set have no
+  facet data. They are still returned by queries, but they aren't
+  counted until they are re-indexed.
+- **Reader state:** the facet ordinal map is built on the first facet
+  query after each searcher (re)load and cached for that searcher.
+- **Custom field mappers:** a mapper added with `AddField` takes part
+  if it implements `IFacetFieldMapper<T>`. `ReflectionFieldMapper<T>`
+  does this; its constructor overload takes a `facet` argument.
 
 ## Sessions, transactions, and the data provider
 

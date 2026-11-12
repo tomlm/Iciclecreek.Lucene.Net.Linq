@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Lucene.Net.Facet;
+using Lucene.Net.Facet.SortedSet;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Util;
 using Microsoft.Extensions.Logging;
@@ -195,6 +197,11 @@ namespace Lucene.Net.Linq
                 get { return tracker.Searcher; }
             }
 
+            public SortedSetDocValuesReaderState FacetState
+            {
+                get { return tracker.FacetState; }
+            }
+
             public void Dispose()
             {
                 if (disposed) throw new ObjectDisposedException(typeof(ISearcherHandle).Name);
@@ -212,6 +219,9 @@ namespace Lucene.Net.Linq
             private readonly IndexSearcher searcher;
             private bool disposePending;
             private bool disposed;
+            private readonly object facetStateSync = new object();
+            private SortedSetDocValuesReaderState facetState;
+            private bool facetStateBuilt;
 
             public SearcherClientTracker(IndexSearcher searcher)
             {
@@ -226,6 +236,44 @@ namespace Lucene.Net.Linq
             public IndexSearcher Searcher
             {
                 get { return searcher; }
+            }
+
+            /// <summary>
+            /// Sorted-set facet reader state for this searcher's reader, built on
+            /// first use and cached for the life of the searcher. A reload creates
+            /// a new tracker, so the state is rebuilt for the new reader.
+            /// <c>null</c> when no document in the index has facet fields.
+            /// </summary>
+            public SortedSetDocValuesReaderState FacetState
+            {
+                get
+                {
+                    lock (facetStateSync)
+                    {
+                        if (!facetStateBuilt)
+                        {
+                            facetState = CreateFacetState(searcher.IndexReader);
+                            facetStateBuilt = true;
+                        }
+
+                        return facetState;
+                    }
+                }
+            }
+
+            private static SortedSetDocValuesReaderState CreateFacetState(IndexReader reader)
+            {
+                // DefaultSortedSetDocValuesReaderState throws when the field has
+                // no sorted-set doc values (e.g. an index written before facets
+                // were mapped, or an empty index); treat that as "no facets".
+                var fieldInfo = MultiFields.GetMergedFieldInfos(reader).FieldInfo(FacetsConfig.DEFAULT_INDEX_FIELD_NAME);
+
+                if (fieldInfo == null || fieldInfo.DocValuesType != DocValuesType.SORTED_SET)
+                {
+                    return null;
+                }
+
+                return new DefaultSortedSetDocValuesReaderState(reader, FacetsConfig.DEFAULT_INDEX_FIELD_NAME);
             }
 
             public void AddClient(object client)
@@ -306,6 +354,12 @@ namespace Lucene.Net.Linq
     internal interface ISearcherHandle : IDisposable
     {
         IndexSearcher Searcher { get; }
+
+        /// <summary>
+        /// Cached facet reader state for <see cref="Searcher"/>, or <c>null</c>
+        /// when the index has no facet fields.
+        /// </summary>
+        SortedSetDocValuesReaderState FacetState { get; }
     }
 
 }

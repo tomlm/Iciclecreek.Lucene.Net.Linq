@@ -26,7 +26,8 @@ namespace Lucene.Net.Linq.Fluent
                     Boost = boost,
                     ConverterInstance = converter,
                     PrecisionStep = precisionStep,
-                    Store = store
+                    Store = store,
+                    Facet = facet
                 };
 
             return NumericFieldMappingInfoBuilder.BuildNumeric<T>(propInfo, PropertyType, attrib, isCollection: false);

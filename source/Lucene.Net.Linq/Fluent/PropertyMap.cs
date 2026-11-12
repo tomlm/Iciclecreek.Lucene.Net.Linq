@@ -29,6 +29,7 @@ namespace Lucene.Net.Linq.Fluent
         protected bool caseSensitive;
         protected Operator defaultParseOperator = Operator.OR;
         protected bool nativeSort;
+        protected bool facet;
 
         internal PropertyMap(ClassMap<T> classMap, PropertyInfo propInfo, bool isKey = false)
             : this(classMap, propInfo, null)
@@ -229,6 +230,17 @@ namespace Lucene.Net.Linq.Fluent
             nativeSort = true;
             return this;
         }
+
+        /// <summary>
+        /// Makes the property's values countable with
+        /// <see cref="LuceneMethods.Facets{T}"/>. Works on collection properties.
+        /// See <see cref="BaseFieldAttribute.Facet"/>.
+        /// </summary>
+        public PropertyMap<T> Facet()
+        {
+            facet = true;
+            return this;
+        }
         protected internal string PropertyName
         {
             get { return propInfo.Name; }
@@ -271,7 +283,7 @@ namespace Lucene.Net.Linq.Fluent
         {
             return new ReflectionFieldMapper<T>(propInfo, store, indexMode, TermVectorMode,
                                                 ResolveConverter(), fieldName, defaultParseOperator,
-                                                caseSensitive, ResolveAnalyzer(), boost, nativeSort);
+                                                caseSensitive, ResolveAnalyzer(), boost, nativeSort, docValues: false, facet: facet);
         }
 
         private TypeConverter ResolveConverter()
@@ -308,6 +320,7 @@ namespace Lucene.Net.Linq.Fluent
                 this.caseSensitive = copy.caseSensitive;
                 this.defaultParseOperator = copy.defaultParseOperator;
                 this.nativeSort = copy.nativeSort;
+                this.facet = copy.facet;
                 return;
             }
 

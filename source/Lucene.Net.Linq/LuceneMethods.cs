@@ -75,6 +75,74 @@ namespace Lucene.Net.Linq
                                 source.Expression, Expression.Constant(callback)));
         }
 
+        /// <summary>
+        /// Counts matching documents per facet value or range, in the same search
+        /// pass that produces the results.
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// var page = provider.AsQueryable&lt;Passage&gt;()
+        ///     .Where(p => p.Text.Contains("berlin"))
+        ///     .Facets(out var facets, f => f
+        ///         .Count(p => p.Topics)
+        ///         .Ranges(p => p.Date, FacetRange.Monthly(start, end)))
+        ///     .Take(20)
+        ///     .ToList();
+        ///
+        /// IReadOnlyList&lt;FacetValue&gt; topics = facets.For(p => p.Topics);
+        /// </code>
+        /// </example>
+        /// <remarks>
+        /// <para>
+        /// Counts cover every document matching the query, regardless of
+        /// <c>Skip</c>/<c>Take</c>, and are filled when the query executes
+        /// (before the first result is returned). Re-executing the query
+        /// replaces them.
+        /// </para>
+        /// <para>
+        /// Call this before any <c>Select</c>: selectors refer to the document type.
+        /// Properties must be mapped with <c>Facet = true</c> (attribute) or
+        /// <c>.Facet()</c> (fluent).
+        /// </para>
+        /// <para>
+        /// For a pure vector query the matching set is the K nearest neighbours,
+        /// where K is the <c>Take</c> value (10 when there is no <c>Take</c>), so
+        /// counts cover only those documents. With other predicates, those
+        /// predicates decide the matching set.
+        /// </para>
+        /// </remarks>
+        /// <param name="source">The query.</param>
+        /// <param name="facets">Receives the counts when the query executes.</param>
+        /// <param name="configure">Chooses the properties to count, e.g. <c>f => f.Count(p => p.Tags)</c>.</param>
+        public static IQueryable<T> Facets<T>(this IQueryable<T> source, out FacetResults<T> facets, Action<FacetRequest<T>> configure)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var request = new FacetRequest<T>();
+            configure(request);
+
+            if (request.Specs.Count == 0)
+            {
+                throw new ArgumentException("The facet request does not count anything.", nameof(configure));
+            }
+
+            facets = new FacetResults<T>();
+
+            return source.ApplyFacets(new FacetQuery(request.Specs.ToList(), facets));
+        }
+
+        /// <summary>
+        /// Marker method placed in the expression tree by <see cref="Facets{T}"/>
+        /// (which has an <c>out</c> parameter and so cannot appear in it itself).
+        /// </summary>
+        internal static IQueryable<T> ApplyFacets<T>(this IQueryable<T> source, FacetQuery facetQuery)
+        {
+            return source.Provider.CreateQuery<T>(
+                Expression.Call(((MethodInfo)MethodBase.GetCurrentMethod()).MakeGenericMethod(typeof(T)),
+                                source.Expression, Expression.Constant(facetQuery)));
+        }
+
         internal static IQueryable<T> TrackRetrievedDocuments<T>(this IQueryable<T> source, IRetrievedDocumentTracker<T> tracker)
         {
             return source.Provider.CreateQuery<T>(

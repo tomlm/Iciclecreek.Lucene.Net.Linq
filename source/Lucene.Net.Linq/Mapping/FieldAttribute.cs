@@ -103,6 +103,34 @@ namespace Lucene.Net.Linq.Mapping
         /// </remarks>
         public bool DocValues { get; set; }
 
+        /// <summary>
+        /// When <c>true</c>, the property's values can be counted with
+        /// <see cref="LuceneMethods.Facets{T}"/>. Works on single-valued and
+        /// collection properties.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each value is written to the shared sorted-set facet field
+        /// (<c>$facets</c>) as its string form: the same text the converter
+        /// produces for the index. Values are not analyzed, so case is preserved.
+        /// Null and empty values are skipped.
+        /// </para>
+        /// <para>
+        /// Single-valued numeric, <see cref="DateTime"/> and <see cref="DateTimeOffset"/>
+        /// properties also support range counts. A <see cref="NumericFieldAttribute"/>
+        /// property writes its value to a numeric doc-values column under its own
+        /// field name. Any other numeric or date property keeps its existing string
+        /// field and gets a hidden numeric column named <c>{Field}$range</c>; dates
+        /// are stored there as UTC ticks. Collection properties support value
+        /// counts only.
+        /// </para>
+        /// <para>
+        /// Documents indexed before this flag was set have no facet data and are
+        /// not counted until they are re-indexed.
+        /// </para>
+        /// </remarks>
+        public bool Facet { get; set; }
+
         internal TypeConverter ConverterInstance { get; set; }
     }
 

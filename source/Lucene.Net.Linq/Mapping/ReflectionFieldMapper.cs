@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Lucene.Net.Analysis;
@@ -16,8 +18,14 @@ using System.Collections.Concurrent;
 
 namespace Lucene.Net.Linq.Mapping
 {
-    public class ReflectionFieldMapper<T> : IFieldMapper<T>, IDocumentFieldConverter
+    public class ReflectionFieldMapper<T> : IFacetFieldMapper<T>, IDocumentFieldConverter
     {
+        /// <summary>
+        /// Suffix of the hidden numeric doc-values field written for range
+        /// facets on properties that are not mapped as numeric fields.
+        /// </summary>
+        public const string RangeFacetFieldSuffix = "$range";
+
         protected static ConcurrentDictionary<string, object> internalCache = new ConcurrentDictionary<string, object> (StringComparer.Ordinal);
         protected readonly PropertyInfo propertyInfo;
         protected readonly Func<T, object> propertyGetter;
@@ -33,6 +41,7 @@ namespace Lucene.Net.Linq.Mapping
         protected readonly float boost;
         protected readonly bool nativeSort;
         protected readonly bool docValues;
+        protected readonly bool facet;
         private readonly FieldType fieldType;
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector,
@@ -54,7 +63,13 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort, bool docValues)
+            : this(propertyInfo, store, index, termVector, converter, fieldName, defaultParserOperator, caseSensitive, analyzer, boost, nativeSort, docValues, facet: false)
         {
+        }
+
+        public ReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, IndexMode index, TermVectorMode termVector, TypeConverter converter, string fieldName, Operator defaultParserOperator, bool caseSensitive, Analyzer analyzer, float boost, bool nativeSort, bool docValues, bool facet)
+        {
+            this.facet = facet;
             this.propertyInfo = propertyInfo;
             this.propertyGetter = CreatePropertyGetter(propertyInfo);
             if (propertyInfo.CanWrite)
@@ -86,8 +101,113 @@ namespace Lucene.Net.Linq.Mapping
         public virtual Operator DefaultParseOperator => defaultParserOperator;
         public virtual bool NativeSort => nativeSort;
         public virtual bool DocValues => docValues;
+        public virtual bool Facet => facet;
+
+        public virtual string RangeFacetField =>
+            facet && TryGetHiddenRangeType(out _) ? fieldName + RangeFacetFieldSuffix : null;
+
+        public virtual NumericFieldType RangeFacetValueType =>
+            facet && TryGetHiddenRangeType(out var type) ? type : NumericFieldType.NONE;
 
         public virtual object GetPropertyValue(T source) => propertyGetter(source);
+
+        public virtual IEnumerable<string> GetFacetValues(T source)
+        {
+            if (!facet) yield break;
+
+            var label = ConvertToFacetLabel(propertyGetter(source));
+
+            if (!string.IsNullOrEmpty(label))
+                yield return label;
+        }
+
+        /// <summary>
+        /// Converts a property (or collection element) value to its facet label:
+        /// the converter's string output, or the value itself for strings.
+        /// </summary>
+        protected internal virtual string ConvertToFacetLabel(object value)
+        {
+            if (value == null) return null;
+
+            if (converter != null)
+                return (string)converter.ConvertTo(value, typeof(string)); // same text AddField indexes
+
+            if (value is string s) return s;
+
+            return value is IFormattable formattable
+                ? formattable.ToString(null, CultureInfo.InvariantCulture)
+                : value.ToString();
+        }
+
+        public virtual object ConvertToRangeFacetValue(object value)
+        {
+            if (value == null) return null;
+
+            if (!TryGetHiddenRangeType(out var type))
+                throw new NotSupportedException("Property " + PropertyName + " does not support range facets.");
+
+            switch (value)
+            {
+                case DateTime dt: return dt.ToUniversalTime().Ticks;
+                case DateTimeOffset dto: return dto.UtcTicks;
+            }
+
+            return type == NumericFieldType.INT64
+                ? (object)Convert.ToInt64(value, CultureInfo.InvariantCulture)
+                : Convert.ToDouble(value, CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Determines whether this (non-numeric-mapped) property gets a hidden
+        /// numeric doc-values column for range facets, and how it is encoded.
+        /// Only single-valued numeric and date properties qualify.
+        /// </summary>
+        private bool TryGetHiddenRangeType(out NumericFieldType type)
+        {
+            type = NumericFieldType.NONE;
+
+            var propertyType = propertyInfo.PropertyType.GetUnderlyingType();
+
+            if (propertyType.IsEnum) return false;
+
+            if (propertyType == typeof(DateTime) || propertyType == typeof(DateTimeOffset)
+                || propertyType == typeof(long) || propertyType == typeof(int) || propertyType == typeof(uint)
+                || propertyType == typeof(short) || propertyType == typeof(ushort)
+                || propertyType == typeof(byte) || propertyType == typeof(sbyte))
+            {
+                type = NumericFieldType.INT64;
+                return true;
+            }
+
+            if (propertyType == typeof(double) || propertyType == typeof(float) || propertyType == typeof(decimal))
+            {
+                type = NumericFieldType.DOUBLE;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Writes the hidden range-facet column for <paramref name="value"/>
+        /// when <see cref="RangeFacetField"/> is set.
+        /// </summary>
+        protected void AddRangeFacetField(Document target, object value)
+        {
+            var rangeField = RangeFacetField;
+            if (rangeField == null) return;
+
+            target.RemoveFields(rangeField);
+
+            if (value == null) return;
+
+            var converted = ConvertToRangeFacetValue(value);
+
+            if (converted is long l)
+                target.Add(new NumericDocValuesField(rangeField, l));
+            else
+                target.Add(new DoubleDocValuesField(rangeField, (double)converted));
+        }
 
         public virtual void CopyFromDocument(Document source, IQueryExecutionContext context, T target)
         {
@@ -119,6 +239,8 @@ namespace Lucene.Net.Linq.Mapping
             target.RemoveFields(fieldName);
 
             AddField(target, value);
+
+            AddRangeFacetField(target, value);
         }
 
         public virtual string ConvertToQueryExpression(object value)

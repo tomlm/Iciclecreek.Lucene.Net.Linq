@@ -38,6 +38,7 @@
   <ItemGroup>
     <PackageReference Include="Lucene.Net" />
     <PackageReference Include="Lucene.Net.Analysis.Common" />
+    <PackageReference Include="Lucene.Net.Facet" />
     <PackageReference Include="Lucene.Net.Queries" />
     <PackageReference Include="Lucene.Net.QueryParser" />
     <PackageReference Include="Remotion.Linq" />

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Lucene.Net.Analysis.Core;
@@ -26,10 +27,71 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues)
-            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues)
+            : this(propertyInfo, store, typeToValueTypeConverter, valueTypeToStringConverter, field, precisionStep, boost, docValues, facet: false)
+        {
+        }
+
+        public NumericReflectionFieldMapper(PropertyInfo propertyInfo, StoreMode store, TypeConverter typeToValueTypeConverter, TypeConverter valueTypeToStringConverter, string field, int precisionStep, float boost, bool docValues, bool facet)
+            : base(propertyInfo, store, IndexMode.Analyzed, TermVectorMode.No, valueTypeToStringConverter, field, Operator.OR, false, new KeywordAnalyzer(), boost, nativeSort: false, docValues: docValues, facet: facet)
         {
             this.typeToValueTypeConverter = typeToValueTypeConverter;
             this.precisionStep = precisionStep;
+        }
+
+        /// <summary>
+        /// Numeric fields keep range-facet values in a numeric doc-values
+        /// column under their own field name (the same column
+        /// <c>DocValues = true</c> writes).
+        /// </summary>
+        public override string RangeFacetField => facet ? fieldName : null;
+
+        public override NumericFieldType RangeFacetValueType
+        {
+            get
+            {
+                if (!facet) return NumericFieldType.NONE;
+
+                var type = typeToValueTypeConverter != null
+                    ? GetUnderlyingValueType()
+                    : propertyInfo.PropertyType.GetUnderlyingType();
+
+                if (type != null && type.IsEnum) type = Enum.GetUnderlyingType(type);
+
+                if (type == typeof(double)) return NumericFieldType.DOUBLE;
+                if (type == typeof(float)) return NumericFieldType.SINGLE;
+                return NumericFieldType.INT64;
+            }
+        }
+
+        public override object ConvertToRangeFacetValue(object value)
+        {
+            if (value == null) return null;
+
+            value = ConvertToSupportedValueType(value);
+
+            if (value != null && value.GetType().IsEnum)
+            {
+                value = Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()));
+            }
+
+            switch (value)
+            {
+                case double d: return d;
+                case float f: return (double)f;
+                default: return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            }
+        }
+
+        protected internal override string ConvertToFacetLabel(object value)
+        {
+            switch (value)
+            {
+                case null: return null;
+                case DateTime dt: return dt.ToString(FieldMappingInfoBuilder.DefaultDateTimeFormat, CultureInfo.InvariantCulture);
+                case DateTimeOffset dto: return dto.ToString("o", CultureInfo.InvariantCulture);
+                case IFormattable formattable: return formattable.ToString(null, CultureInfo.InvariantCulture);
+                default: return value.ToString();
+            }
         }
 
         public int PrecisionStep
@@ -103,6 +165,8 @@ namespace Lucene.Net.Linq.Mapping
             var fieldStore = store == StoreMode.Yes ? Field.Store.YES : Field.Store.NO;
             Field numericField;
 
+            // Facet range counts read the same numeric doc-values column.
+            var docValues = this.docValues || facet;
             Field dvField = null;
             switch (value)
             {

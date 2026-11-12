@@ -166,6 +166,18 @@ namespace Lucene.Net.Linq
             customScoreFunction = scoreFunction;
         }
 
+        private readonly List<FacetQuery> facetQueries = new List<FacetQuery>();
+
+        /// <summary>
+        /// Facet requests added by <see cref="LuceneMethods.Facets{T}"/>.
+        /// </summary>
+        public IReadOnlyList<FacetQuery> FacetQueries => facetQueries;
+
+        public void AddFacetQuery(FacetQuery facetQuery)
+        {
+            facetQueries.Add(facetQuery);
+        }
+
         public void AddQueryStatisticsCallback(Action<LuceneQueryStatistics> callback)
         {
             OnCaptureQueryStatistics += callback;

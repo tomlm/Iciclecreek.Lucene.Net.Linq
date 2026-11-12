@@ -8,5 +8,6 @@ namespace Lucene.Net.Linq
         void VisitBoostClause(BoostClause clause, QueryModel queryModel, int index);
         void VisitTrackRetrievedDocumentsClause(TrackRetrievedDocumentsClause clause, QueryModel queryModel, int index);
         void VisitQueryStatisticsCallbackClause(QueryStatisticsCallbackClause clause, QueryModel queryModel, int index);
+        void VisitFacetsClause(FacetsClause clause, QueryModel queryModel, int index);
     }
 }

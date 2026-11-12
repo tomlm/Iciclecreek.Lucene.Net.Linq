@@ -6,6 +6,9 @@ using System.Linq.Expressions;
 using Iciclecreek.Lucene.Net.Vector;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
+using Lucene.Net.Facet;
+using Lucene.Net.Facet.Range;
+using Lucene.Net.Facet.SortedSet;
 using Lucene.Net.Index;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Linq.ScalarResultHandlers;
@@ -138,6 +141,8 @@ namespace Lucene.Net.Linq
                 TimeSpan elapsedPreparationTime;
                 TimeSpan elapsedSearchTime;
 
+                var facetsCollector = luceneQueryModel.FacetQueries.Count > 0 ? new FacetsCollector() : null;
+
                 if (maxResults > 0)
                 {
                     PrepareSearchSettings(executionContext);
@@ -147,7 +152,7 @@ namespace Lucene.Net.Linq
 
                     elapsedPreparationTime = watch.Elapsed;
 
-                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults, luceneQueryModel.Sort);
+                    hits = Search(searcher, executionContext.Query, executionContext.Filter, maxResults, luceneQueryModel.Sort, facetsCollector);
 
                     elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
                 }
@@ -155,8 +160,11 @@ namespace Lucene.Net.Linq
                 {
                     hits = new TopFieldDocs(0, new ScoreDoc[0], new SortField[0], 0);
                     elapsedPreparationTime = watch.Elapsed;
-                    elapsedSearchTime = TimeSpan.Zero;
+                    CollectFacetsOnly(searcher, executionContext.Query, executionContext.Filter, facetsCollector);
+                    elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
                 }
+
+                ComputeFacets(luceneQueryModel, searcherHandle, facetsCollector);
 
                 executionContext.Phase = QueryExecutionPhase.ConvertResults;
                 executionContext.Hits = hits;
@@ -241,15 +249,21 @@ namespace Lucene.Net.Linq
                 // numHits > 0). Short-circuit on empty result sets so callers
                 // like Min/Max see an empty enumerable rather than a crash.
                 TopFieldDocs hits;
+                // Facets are counted against the same (vector-resolved) query,
+                // collected in the same search pass as the hits.
+                var facetsCollector = luceneQueryModel.FacetQueries.Count > 0 ? new FacetsCollector() : null;
                 if (maxResults + skipResults <= 0)
                 {
                     hits = new TopFieldDocs(0, new ScoreDoc[0], new SortField[0], 0);
+                    CollectFacetsOnly(searcher, executionContext.Query, executionContext.Filter, facetsCollector);
                 }
                 else
                 {
-                    hits = searcher.Search(executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort);
+                    hits = Search(searcher, executionContext.Query, executionContext.Filter, maxResults + skipResults, luceneQueryModel.Sort, facetsCollector);
                 }
                 var elapsedSearchTime = watch.Elapsed - elapsedPreparationTime;
+
+                ComputeFacets(luceneQueryModel, searcherHandle, facetsCollector);
 
                 executionContext.Phase = QueryExecutionPhase.ConvertResults;
                 executionContext.Hits = hits;
@@ -483,6 +497,154 @@ namespace Lucene.Net.Linq
                 itemHolder.Current = item;
                 yield return projector(itemHolder.Current);
             }
+        }
+
+        /// <summary>
+        /// Runs the search, also feeding <paramref name="facetsCollector"/> in the
+        /// same pass when facets were requested.
+        /// </summary>
+        private static TopFieldDocs Search(IndexSearcher searcher, Query query, Filter filter, int n, Sort sort, FacetsCollector facetsCollector)
+        {
+            if (facetsCollector == null)
+            {
+                return searcher.Search(query, filter, n, sort);
+            }
+
+            return (TopFieldDocs)FacetsCollector.Search(searcher, query, filter, n, sort, facetsCollector);
+        }
+
+        /// <summary>
+        /// Collects facet matches when no hits are needed (e.g. <c>Take(0)</c>
+        /// or an empty index), where a top-N search cannot run.
+        /// </summary>
+        private static void CollectFacetsOnly(IndexSearcher searcher, Query query, Filter filter, FacetsCollector facetsCollector)
+        {
+            if (facetsCollector != null)
+            {
+                searcher.Search(query, filter, facetsCollector);
+            }
+        }
+
+        private void ComputeFacets(LuceneQueryModel luceneQueryModel, ISearcherHandle searcherHandle, FacetsCollector facetsCollector)
+        {
+            if (facetsCollector == null) return;
+
+            // Value counts for every dimension come from one pass over the
+            // matching documents; build them once and share across requests.
+            SortedSetDocValuesReaderState state = null;
+            SortedSetDocValuesFacetCounts valueCounts = null;
+            var valueCountsBuilt = false;
+
+            foreach (var facetQuery in luceneQueryModel.FacetQueries)
+            {
+                var results = new Dictionary<string, IReadOnlyList<FacetValue>>(StringComparer.Ordinal);
+
+                foreach (var spec in facetQuery.Specs)
+                {
+                    var info = GetFacetMappingInfo(spec.PropertyName);
+
+                    if (spec.Ranges != null)
+                    {
+                        results[spec.PropertyName] = CountRanges(info, spec, facetsCollector);
+                        continue;
+                    }
+
+                    if (!valueCountsBuilt)
+                    {
+                        state = searcherHandle.FacetState;
+                        valueCounts = state != null ? new SortedSetDocValuesFacetCounts(state, facetsCollector) : null;
+                        valueCountsBuilt = true;
+                    }
+
+                    results[spec.PropertyName] = CountValues(info, spec, state, valueCounts);
+                }
+
+                facetQuery.Sink.SetResults(results);
+            }
+        }
+
+        private IFacetFieldMappingInfo GetFacetMappingInfo(string propertyName)
+        {
+            IFieldMappingInfo info;
+
+            try
+            {
+                info = GetMappingInfo(propertyName);
+            }
+            catch (KeyNotFoundException)
+            {
+                info = null;
+            }
+
+            if (info is IFacetFieldMappingInfo facetInfo && facetInfo.Facet)
+            {
+                return facetInfo;
+            }
+
+            throw new InvalidOperationException(string.Format(
+                "Property {0} of {1} is not mapped as a facet. Mark it with [Field(Facet = true)] or [NumericField(Facet = true)], or call .Facet() in a fluent mapping.",
+                propertyName, MappedType));
+        }
+
+        private static IReadOnlyList<FacetValue> CountValues(IFacetFieldMappingInfo info, FacetSpec spec, SortedSetDocValuesReaderState state, SortedSetDocValuesFacetCounts counts)
+        {
+            if (state == null || counts == null) return Array.Empty<FacetValue>();
+
+            var dimension = info.FieldName;
+
+            // GetTopChildren throws for a dimension that was never indexed.
+            var ordRange = state.GetOrdRange(dimension);
+            if (ordRange == null) return Array.Empty<FacetValue>();
+
+            // GetTopChildren sizes a priority queue by topN, so "all values"
+            // means the number of distinct values in the dimension.
+            var distinctValues = ordRange.End - ordRange.Start + 1;
+            var top = spec.Top.HasValue ? Math.Min(spec.Top.Value, distinctValues) : distinctValues;
+
+            var result = counts.GetTopChildren(top, dimension);
+            if (result == null) return Array.Empty<FacetValue>();
+
+            return result.LabelValues.Select(lv => new FacetValue(lv.Label, (int)lv.Value)).ToList();
+        }
+
+        private static IReadOnlyList<FacetValue> CountRanges(IFacetFieldMappingInfo info, FacetSpec spec, FacetsCollector facetsCollector)
+        {
+            var field = info.RangeFacetField;
+
+            if (field == null)
+            {
+                throw new NotSupportedException(string.Format(
+                    "Property {0} does not support range facets. Range facets need a single-valued numeric, DateTime or DateTimeOffset property mapped with Facet = true.",
+                    info.PropertyName));
+            }
+
+            Lucene.Net.Facet.Facets counts;
+
+            if (info.RangeFacetValueType == NumericFieldType.INT64)
+            {
+                var ranges = spec.Ranges.Select(r => new Int64Range(r.Label,
+                    r.Min == null ? long.MinValue : (long)info.ConvertToRangeFacetValue(r.Min), r.Min == null || r.MinInclusive,
+                    r.Max == null ? long.MaxValue : (long)info.ConvertToRangeFacetValue(r.Max), r.Max == null || r.MaxInclusive)).ToArray();
+
+                counts = new Int64RangeFacetCounts(field, facetsCollector, ranges);
+            }
+            else
+            {
+                var ranges = spec.Ranges.Select(r => new DoubleRange(r.Label,
+                    r.Min == null ? double.NegativeInfinity : Convert.ToDouble(info.ConvertToRangeFacetValue(r.Min)), r.Min == null || r.MinInclusive,
+                    r.Max == null ? double.PositiveInfinity : Convert.ToDouble(info.ConvertToRangeFacetValue(r.Max)), r.Max == null || r.MaxInclusive)).ToArray();
+
+                // Single-precision columns store float bits, so read them as floats.
+                Lucene.Net.Queries.Function.ValueSource valueSource = info.RangeFacetValueType == NumericFieldType.SINGLE
+                    ? new Lucene.Net.Queries.Function.ValueSources.SingleFieldSource(field)
+                    : new Lucene.Net.Queries.Function.ValueSources.DoubleFieldSource(field);
+
+                counts = new DoubleRangeFacetCounts(field, valueSource, facetsCollector, ranges);
+            }
+
+            var result = counts.GetTopChildren(spec.Ranges.Count, field);
+
+            return result.LabelValues.Select(lv => new FacetValue(lv.Label, (int)lv.Value)).ToList();
         }
 
         private ISearcherHandle CheckoutSearcher()
