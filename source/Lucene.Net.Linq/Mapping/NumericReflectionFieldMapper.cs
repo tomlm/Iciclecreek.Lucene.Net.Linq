@@ -103,13 +103,20 @@ namespace Lucene.Net.Linq.Mapping
             }
         }
 
+        /// <summary>
+        /// The converter of a numeric field produces the indexed number, which
+        /// is no use as a label for dates, so the label is the value in
+        /// invariant-culture form. Dates are converted to UTC first, as the
+        /// indexed ticks of a <see cref="DateTime"/> are: one instant is one
+        /// label whatever its <see cref="DateTime.Kind"/> or offset.
+        /// </summary>
         protected internal override string ConvertToFacetLabel(object value)
         {
             switch (value)
             {
                 case null: return null;
-                case DateTime dt: return dt.ToString(FieldMappingInfoBuilder.DefaultDateTimeFormat, CultureInfo.InvariantCulture);
-                case DateTimeOffset dto: return dto.ToString("o", CultureInfo.InvariantCulture);
+                case DateTime dt: return dt.ToUniversalTime().ToString(FieldMappingInfoBuilder.DefaultDateTimeFormat, CultureInfo.InvariantCulture);
+                case DateTimeOffset dto: return dto.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
                 case IFormattable formattable: return formattable.ToString(null, CultureInfo.InvariantCulture);
                 default: return value.ToString();
             }

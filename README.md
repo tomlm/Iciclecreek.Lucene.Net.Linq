@@ -565,9 +565,14 @@ How it behaves:
   before then throws, and re-running the query replaces them. Call
   `.Facets(...)` before any `Select`.
 - **Value counts** are ordered by count descending, then by value. A
-  label is the value as indexed (the converter's string output); it is
-  not analyzed, so `"Berlin"` and `"berlin"` are separate values. Null
-  and empty values are skipped.
+  label is not analyzed, so `"Berlin"` and `"berlin"` are separate
+  values. Null and empty values are skipped.
+  - **`[Field]` properties:** the label is the value as indexed (the
+    converter's string output).
+  - **`[NumericField]` properties:** the label is the value in
+    invariant-culture form. Dates are converted to UTC first, so one
+    instant is one label: `yyyy-MM-ddTHH:mm:ss` for `DateTime`, the
+    round-trip `"o"` format for `DateTimeOffset`.
 - **Range counts** are returned in the order the ranges were given.
   Ranges are half-open (`[min, max)`) by default. A document is counted
   in every range that contains its value. `FacetRange.Daily`, `Monthly`

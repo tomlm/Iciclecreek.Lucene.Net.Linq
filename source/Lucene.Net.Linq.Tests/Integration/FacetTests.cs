@@ -433,6 +433,30 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void ValueCounts_NumericDates_OneInstantIsOneLabelInUtc()
+        {
+            // The same instant written with Kind=Local and Kind=Utc. The DateTime half
+            // only tells the two apart on a machine whose local time zone is not UTC;
+            // the DateTimeOffset half does not depend on the machine.
+            var utc = new DateTime(2026, 1, 15, 9, 0, 0, DateTimeKind.Utc);
+
+            Add(new Passage { Id = "1", Date = utc, Published = utc },
+                new Passage { Id = "2", Date = utc.ToLocalTime(), Published = utc.ToLocalTime() });
+
+            Passages.Facets(out var facets, f => f.Count(p => p.Published).Count(p => p.Date)).ToList();
+
+            Assert.That(Pairs(facets.For(p => p.Published)), Is.EqualTo(new[] { "2026-01-15T09:00:00=2" }), "[NumericField] DateTime");
+            Assert.That(Pairs(facets.For(p => p.Date)), Is.EqualTo(new[] { "2026-01-15T09:00:00=2" }), "[Field] DateTime");
+
+            Add(new FacetEvent { Id = "1", When = new DateTimeOffset(utc) },
+                new FacetEvent { Id = "2", When = new DateTimeOffset(utc).ToOffset(TimeSpan.FromHours(-8)) });
+
+            provider.AsQueryable<FacetEvent>().Facets(out var eventFacets, f => f.Count(p => p.When)).ToList();
+
+            Assert.That(Pairs(eventFacets.For(p => p.When)), Is.EqualTo(new[] { "2026-01-15T09:00:00.0000000+00:00=2" }));
+        }
+
+        [Test]
         public void ToDocument_NumericField_WritesHiddenRangeColumn_AndReplacesOnReuse()
         {
             var mapper = new ReflectionDocumentMapper<FacetEvent>(version, null);

@@ -111,8 +111,14 @@ namespace Lucene.Net.Linq.Mapping
         /// <remarks>
         /// <para>
         /// Each value is written to the shared sorted-set facet field
-        /// (<c>$facets</c>) as its string form: the same text the converter
-        /// produces for the index. Values are not analyzed, so case is preserved.
+        /// (<c>$facets</c>) as a string label. On a <see cref="FieldAttribute"/>
+        /// property the label is the same text the converter produces for the
+        /// index. On a <see cref="NumericFieldAttribute"/> property, whose
+        /// converter produces a number, it is the value in invariant-culture
+        /// form; dates are converted to UTC first and written as
+        /// <c>yyyy-MM-ddTHH:mm:ss</c> (<see cref="DateTime"/>) or in the
+        /// round-trip <c>"o"</c> format (<see cref="DateTimeOffset"/>), so one
+        /// instant is one label. Labels are not analyzed, so case is preserved.
         /// Null and empty values are skipped.
         /// </para>
         /// <para>
