@@ -8,7 +8,8 @@ LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinU
 - Join keys are looked up by the mapped field name and the term the value is indexed as. Before, the property name and `ToString()` were used, so a renamed field, a numeric or converted key, or a mixed-case key on a default (lowercased) field found no matches.
 - String keys are compared as their indexed terms, so a join follows the key fields' configuration: case-insensitive on default-mapped fields, exact on `CaseSensitive` / `NotAnalyzed` fields.
 - An inner sequence with its own operators (`join a in authors.Where(...)`) now works. Before, it threw `ArgumentException: must be reducible node`.
-- `Count()` after `Take` now honours the `Take`, for queries with or without a join. Before, `query.Take(2).Count()` returned the total number of matches.
+- `Count()` after `Take` now honours the `Take`, for queries with or without a join. Before, `query.Take(2).Count()` returned the total number of matches. A `Skip` past the rows that were taken counts 0 (`query.Take(2).Skip(3).Count()` was negative).
+- `Last()` / `LastOrDefault()` after a `Skip` that passes the last match now finds no row, for queries with or without a join. Before, `query.Skip(n).Last()` returned the last match however large `n` was.
 
 **New**
 - A join whose result uses only one side runs inside Lucene: the unused side becomes a filter, its documents are never loaded, and sorting, paging, `Count` and `Any` run in the index. Either side can be the one returned. In a chained join each join is decided separately.

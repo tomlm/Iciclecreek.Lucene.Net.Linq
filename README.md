@@ -469,7 +469,8 @@ joined in memory and the reason is logged at debug level
 - **Operators Lucene runs:** the query's result operators are among
   `Skip`, `Take`, `First`, `Single`, `Last`, `Min`, `Max`, `Count`,
   `LongCount` and `Any`. Others (`Sum`, `Average`, `Distinct`,
-  `Contains`, `All`...) are applied to the joined rows in memory.
+  `Contains`, `All`...) are applied to the joined rows in memory, and so
+  is a `Min` or `Max` that follows a `Skip` or `Take`.
 - **Unordered sides when the inner side is returned:** neither the outer
   side nor the inner sequence is ordered, and the query doesn't order by
   score.

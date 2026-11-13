@@ -623,6 +623,60 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void Count_AfterSkipPastWhatWasTaken_IsZero()
+        {
+            // Skipping more rows than were taken leaves none; the count must not go negative.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Take(2).Skip(3).Count(), Pushed), Is.EqualTo(0));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Take(3).Skip(1).Count(), Pushed), Is.EqualTo(2));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Skip(9).Count(), Pushed), Is.EqualTo(0));
+
+            // Without a join.
+            Assert.That(Stories.Take(2).Skip(3).Count(), Is.EqualTo(0));
+            Assert.That(Stories.Take(2).Skip(9).LongCount(), Is.EqualTo(0L));
+            Assert.That(Stories.Take(3).Skip(1).Count(), Is.EqualTo(2));
+            Assert.That(Stories.Skip(1).Take(3).Skip(1).Count(), Is.EqualTo(2));
+            Assert.That(Stories.Take(0).Count(), Is.EqualTo(0));
+            Assert.That(Stories.Skip(9).Count(), Is.EqualTo(0));
+            Assert.That(Stories.Take(9).LongCount(), Is.EqualTo(5L));
+            Assert.That(Sections.Where(c => c.SectionId == "none").Take(2).Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Fallback_MinOrMaxAfterPaging()
+        {
+            // Joined ranks are 5, 4, 3, 1. Lucene would sort by the value and
+            // answer for all rows (1 and 5), ignoring the page.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank descending select s.Rank).Take(2).Min(),
+                "Min after Skip or Take only runs on rows in memory"), Is.EqualTo(4));
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.Rank).Skip(1).Take(2).Max(),
+                "Max after Skip or Take only runs on rows in memory"), Is.EqualTo(4));
+
+            // On their own they run in Lucene.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Min(), Pushed), Is.EqualTo(1));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Max(), Pushed), Is.EqualTo(5));
+        }
+
+        [Test]
+        public void Last_AfterSkip()
+        {
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Skip(1).Last(), Pushed),
+                Is.EqualTo("s1"));
+
+            // Four joined rows: skipping them all leaves no last row.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Skip(4).LastOrDefault(), Pushed),
+                Is.Null);
+
+            Assert.That(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Skip(9).Last(),
+                Throws.InvalidOperationException);
+
+            // Without a join.
+            Assert.That(Stories.OrderBy(s => s.Rank).Select(s => s.StoryId).Skip(5).LastOrDefault(), Is.Null);
+            Assert.That(Stories.OrderBy(s => s.Rank).Select(s => s.StoryId).Skip(4).Last(), Is.EqualTo("s1"));
+            Assert.That(Stories.OrderBy(s => s.Rank).Select(s => s.StoryId).Take(2).Last(), Is.EqualTo("s4"));
+        }
+
+        [Test]
         public void Fallback_ResultOperatorsThatOnlyRunInMemory()
         {
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Sum(),

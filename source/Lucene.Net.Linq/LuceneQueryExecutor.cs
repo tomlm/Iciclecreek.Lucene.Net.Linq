@@ -306,8 +306,10 @@ namespace Lucene.Net.Linq
 
                 if (luceneQueryModel.Last)
                 {
-                    skipResults = hits.ScoreDocs.Length - 1;
-                    if (skipResults < 0) yield break;
+                    // The last hit, unless Skip has already passed it (or there is none).
+                    var last = hits.ScoreDocs.Length - 1;
+                    if (last < Math.Max(skipResults, 0)) yield break;
+                    skipResults = last;
                 }
 
                 var tracker = luceneQueryModel.DocumentTracker as IRetrievedDocumentTracker<TDocument>;

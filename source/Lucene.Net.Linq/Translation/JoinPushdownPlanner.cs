@@ -276,6 +276,17 @@ namespace Lucene.Net.Linq.Translation
                 return false;
             }
 
+            // Lucene answers Min and Max by sorting on the selected value and
+            // keeping the first hit, which replaces any Skip or Take ahead of
+            // them: the extreme of all rows, not of the page.
+            var lastOperator = queryModel.ResultOperators.LastOrDefault();
+
+            if (queryModel.ResultOperators.Count > 1 && (lastOperator is MinResultOperator || lastOperator is MaxResultOperator))
+            {
+                reason = "result operator " + lastOperator.GetType().Name.Replace("ResultOperator", "") + " after Skip or Take only runs on rows in memory";
+                return false;
+            }
+
             if (!joinUsed)
             {
                 if (TryFilterOuterSide(queryModel, join, joinIndex, inner, innerModel, outerKey, innerKey, multiplicityMatters, out reason))
