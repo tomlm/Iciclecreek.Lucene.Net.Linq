@@ -69,6 +69,8 @@ namespace Lucene.Net.Linq.Translation
 
         public override void VisitOrderByClause(OrderByClause orderByClause, QueryModel queryModel, int index)
         {
+            model.BeginOrderByClause();
+
             foreach (var ordering in orderByClause.Orderings)
             {
                 model.AddSort(ordering.Expression, ordering.OrderingDirection);

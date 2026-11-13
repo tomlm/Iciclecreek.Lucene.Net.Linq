@@ -108,6 +108,31 @@ namespace Lucene.Net.Linq
         public void ResetSorts()
         {
             sorts.Clear();
+            sortInsertIndex = -1;
+        }
+
+        private int sortInsertIndex = -1;
+
+        /// <summary>
+        /// Starts the sort fields of one <c>orderby</c> clause. As in LINQ, where
+        /// a later <c>OrderBy</c> re-sorts and the earlier order only breaks
+        /// ties, a later clause's fields go in front of those already added.
+        /// </summary>
+        public void BeginOrderByClause()
+        {
+            sortInsertIndex = 0;
+        }
+
+        private void AddSortField(SortField sortField)
+        {
+            if (sortInsertIndex < 0)
+            {
+                sorts.Add(sortField);
+            }
+            else
+            {
+                sorts.Insert(sortInsertIndex++, sortField);
+            }
         }
 
         public void AddSort(Expression expression, OrderingDirection direction)
@@ -116,11 +141,11 @@ namespace Lucene.Net.Linq
             {
                 if (direction == OrderingDirection.Desc)
                 {
-                    sorts.Add(new SortField(SortField.FIELD_SCORE.Field, SortField.FIELD_SCORE.Type, true));
+                    AddSortField(new SortField(SortField.FIELD_SCORE.Field, SortField.FIELD_SCORE.Type, true));
                 }
                 else
                 {
-                    sorts.Add(SortField.FIELD_SCORE);
+                    AddSortField(SortField.FIELD_SCORE);
                 }
                 
                 return;
@@ -152,7 +177,7 @@ namespace Lucene.Net.Linq
 
             var mapping = fieldMappingInfoProvider.GetMappingInfo(propertyName);
 
-            sorts.Add(mapping.CreateSortField(reverse));
+            AddSortField(mapping.CreateSortField(reverse));
         }
         
         public void AddBoostFunction(LambdaExpression expression)
