@@ -477,9 +477,16 @@ The first join on a key field reads that field's terms into Lucene's
 `FieldCache` (per segment, kept until the searcher reloads). A
 case-sensitive key with `DocValues = true` skips that cost.
 
-Both paths return the same rows. When a query pages without an
-`OrderBy`, which rows it gets is unspecified and can differ between
-them.
+Both paths return the same rows, in the same order where the query
+orders them. A `where` on one side runs in that side's Lucene query on
+either path, and an `orderby` sorts strings the way Lucene sorts the
+field (ordinal, by the indexed term) on either path. Two things are
+left open:
+
+- When a query pages without an `OrderBy`, which rows it gets is
+  unspecified and can differ between the paths.
+- Rows that tie on every `orderby` key can come in a different order,
+  so add a unique key to the `orderby` when paging depends on it.
 
 Set `provider.Settings.EnableJoinPushdown = false` to always join in
 memory.
@@ -518,9 +525,24 @@ The join itself then runs as follows:
 This is efficient when the outer result set is selective (few distinct
 keys), but loads both sides for broad queries that can't be narrowed.
 
-A `where` or `orderby` written after the join that refers to a joined
-source is applied to the joined rows, with LINQ to Objects semantics
-(see [LINQ semantics](#linq-semantics)).
+A `where` written after the join that reads one joined source
+(`where author.Country == "DE"`) is added to that source's own Lucene
+query. It means what a `Where` on that field means anywhere else (it
+follows the field's analyzer and case handling) and has to be something
+Lucene can translate, and less of that side is loaded.
+
+A `where` that compares two sources (`where article.Nick == author.Nick`)
+can't run in a single Lucene query. It is applied to the joined rows and
+compares values the way C# does (see [LINQ semantics](#linq-semantics)).
+Such a query uses both sides, so it is joined in memory whatever the
+setting and gives the same rows. The same applies to a `where` on a
+joined source that is a local collection, has a projection, or has its
+own `Take`/`Skip`.
+
+An `orderby` that refers to a joined source is applied to the joined
+rows. Strings are ordered as Lucene sorts that field: by ordinal, on the
+indexed term (so a default, lowercased field sorts case-insensitively),
+or on the value as written when the field has `DocValues`.
 
 ### Parsed string queries
 
@@ -596,19 +618,32 @@ rest to the rows it loaded:
   secondary keys.
 - **Clauses after paging:** in `query.Take(10).Where(...)` or
   `query.Skip(5).OrderBy(...)`, the page is read from Lucene first and
-  the `Where` or `OrderBy` is applied to it. The same holds when the
-  paged source is a join. A `Select` or more paging after a page still
-  runs in Lucene.
+  the `Where` or `OrderBy` is applied to it, along with whatever is
+  written after that (`query.Take(10).Where(...).Take(3).Select(...)`).
+  The same holds when the paged source is a join. A `Select` or more
+  paging directly after a page still runs in Lucene.
 - **Operators Lucene doesn't implement:** `Sum`, `Average`, `Distinct`,
-  `Contains(item)`, `All` and `Aggregate` run on the rows of the query
-  up to that point, and so do `Min` and `Max` when they follow a `Skip`
-  or `Take`. These load every row they need, so filter first.
-- **Counting and paging:** `Count()` honours an earlier `Take`, and
-  `Last()` after a `Skip` past the end finds no row.
+  `Contains(item)`, `All`, `Aggregate`, `DefaultIfEmpty` and `Cast` run
+  on the rows of the query up to that point, and so do `Min` and `Max`
+  (with or without a selector) when they follow a `Skip` or `Take`.
+  Anything written after them is applied to their result
+  (`query.Select(...).Distinct().OrderBy(...)`). These load every row
+  they need, so filter first.
+- **Counting and paging:** `Count()` honours an earlier `Take`,
+  `Last()` after a `Skip` past the end finds no row, and neither does
+  `First()` after paging that leaves none (`Take(2).Skip(3)`).
 
-A clause applied to loaded rows compares values the way C# does. A
-`Where` on a string there is exact and case-sensitive, where the same
-`Where` run by Lucene follows the field's analyzer.
+A clause applied to loaded rows compares values the way C# does:
+
+- A `Where` on a string there is exact and case-sensitive, where the
+  same `Where` run by Lucene follows the field's analyzer.
+- `ids.Contains(d.Id)` and `d.Tags.Any(...)` work there when the
+  collection is in memory. A sub-query over another Lucene query
+  throws `NotSupportedException`.
+- An `OrderBy` there orders strings by ordinal, as Lucene does, not by
+  the current culture as LINQ to Objects does. When the key is a mapped
+  property of the documents, it is ordered as Lucene sorts that field
+  (by the indexed term, so a lowercased field sorts case-insensitively).
 
 ### Sorting and DocValues
 
