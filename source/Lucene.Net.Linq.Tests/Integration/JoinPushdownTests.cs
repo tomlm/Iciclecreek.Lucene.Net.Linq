@@ -910,6 +910,31 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(ids, Is.EqualTo(new[] { "s3" }));
         }
 
+        // ---- second review ------------------------------------------------------
+
+        [Test]
+        public void First_AfterPagingThatLeavesNoRows()
+        {
+            // Four joined rows by Rank: s5, s3, s2, s1.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Take(2).Skip(3).FirstOrDefault(), Pushed),
+                Is.Null);
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Take(0).FirstOrDefault(), Pushed),
+                Is.Null);
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Take(3).Skip(1).First(), Pushed),
+                Is.EqualTo("s3"));
+
+            Assert.That(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Take(2).Skip(3).First(),
+                Throws.InvalidOperationException);
+
+            // Without a join.
+            Assert.That(Stories.OrderBy(s => s.Rank).Take(2).Skip(3).FirstOrDefault(), Is.Null);
+            Assert.That(Stories.OrderBy(s => s.Rank).Take(0).FirstOrDefault(), Is.Null);
+            Assert.That(() => Stories.OrderBy(s => s.Rank).Take(0).First(), Throws.InvalidOperationException);
+            Assert.That(Stories.OrderBy(s => s.Rank).Select(s => s.StoryId).Take(2).Skip(1).First(), Is.EqualTo("s4"));
+        }
+
         [Test]
         public void Disabled_AlwaysJoinsInMemory()
         {

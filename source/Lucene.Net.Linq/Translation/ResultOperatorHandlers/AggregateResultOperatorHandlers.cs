@@ -30,7 +30,9 @@ namespace Lucene.Net.Linq.Translation.ResultOperatorHandlers
     {
         protected override void AcceptInternal(FirstResultOperator resultOperator, LuceneQueryModel model)
         {
-            model.MaxResults = 1;
+            // Not simply 1: paging ahead of First may already have left no rows
+            // (Take(0), or Take(2).Skip(3), which leaves MaxResults below zero).
+            model.MaxResults = Math.Min(model.MaxResults, 1);
         }
     }
 

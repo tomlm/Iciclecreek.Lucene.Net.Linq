@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 
@@ -6,12 +7,23 @@ namespace Lucene.Net.Linq.Tests.Integration
     [TestFixture]
     public class SubQueryTests : IntegrationTestBase
     {
+        // The same documents, for comparing a query with LINQ to Objects.
+        private List<SampleDocument> local;
+
         [SetUp]
         public void SetUp()
         {
-            AddDocument(new SampleDocument { Id = "a", Scalar = 5});
-            AddDocument(new SampleDocument { Id = "b", Scalar = 1});
-            AddDocument(new SampleDocument { Id = "c", Scalar = 3});
+            local = new List<SampleDocument>();
+
+            Add(new SampleDocument { Id = "a", Scalar = 5});
+            Add(new SampleDocument { Id = "b", Scalar = 1});
+            Add(new SampleDocument { Id = "c", Scalar = 3});
+        }
+
+        private void Add(SampleDocument document)
+        {
+            AddDocument(document);
+            local.Add(document);
         }
 
         [Test]
@@ -146,6 +158,18 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(docs.OrderBy(d => d.Scalar).Select(d => d.Scalar).Take(2).Max(), Is.EqualTo(3));
             Assert.That(docs.Select(d => d.Scalar).Min(), Is.EqualTo(1));
             Assert.That(docs.Select(d => d.Scalar).Max(), Is.EqualTo(5));
+        }
+
+        [Test]
+        public void First_AfterPagingThatLeavesNoRows()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Skip(3).FirstOrDefault(), Is.Null);
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(0).FirstOrDefault(), Is.Null);
+            Assert.That(() => docs.OrderBy(d => d.Scalar).Take(2).Skip(2).First(), Throws.InvalidOperationException);
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Skip(1).First().Id, Is.EqualTo("c"));
+            Assert.That(docs.OrderBy(d => d.Scalar).First().Id, Is.EqualTo("b"));
         }
 
         [Test]
