@@ -28,8 +28,9 @@ namespace Lucene.Net.Linq
         public bool EnableJoinPushdown { get; set; }
 
         /// <summary>
-        /// Receives one message per join saying whether it was pushed into
-        /// Lucene or why it was not. For tests.
+        /// Receives a message per join saying whether it was pushed into Lucene
+        /// or why it was not, or a single message when the whole query is ruled
+        /// out (pushdown disabled, a group join, a subquery...). For tests.
         /// </summary>
         internal Action<string> JoinPushdownTrace { get; set; }
 

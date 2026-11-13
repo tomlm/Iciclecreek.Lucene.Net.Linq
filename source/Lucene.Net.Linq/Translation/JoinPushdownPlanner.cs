@@ -99,9 +99,26 @@ namespace Lucene.Net.Linq.Translation
                 return null;
             }
 
-            if (ContainsSubQuery(queryModel))
+            // An outer source such as stories.Skip(1).Take(2) pages before the
+            // join; a join filter would be applied ahead of that paging.
+            if (queryModel.MainFromClause.FromExpression is SubQueryExpression)
+            {
+                Skipped("the outer source has paging or other operators that must run before the join");
+                return null;
+            }
+
+            var inspection = Inspect(queryModel);
+
+            if (inspection.HasSubQuery)
             {
                 Skipped("the query contains a subquery");
+                return null;
+            }
+
+            // A vector query picks its nearest neighbours before any filter applies.
+            if (inspection.HasSimilar)
+            {
+                Skipped("the query has a vector (Similar) clause");
                 return null;
             }
 
@@ -198,7 +215,7 @@ namespace Lucene.Net.Linq.Translation
 
             var innerModel = innerSequence.QueryModel;
 
-            if (innerModel.ResultOperators.Count > 0)
+            if (innerModel.ResultOperators.Count > 0 || innerModel.MainFromClause.FromExpression is SubQueryExpression)
             {
                 reason = "the inner sequence has result operators (Take, Skip, …)";
                 return false;
@@ -210,9 +227,17 @@ namespace Lucene.Net.Linq.Translation
                 return false;
             }
 
-            if (innerModel.BodyClauses.OfType<JoinClause>().Any() || ContainsSubQuery(innerModel))
+            var innerInspection = Inspect(innerModel);
+
+            if (innerModel.BodyClauses.OfType<JoinClause>().Any() || innerInspection.HasSubQuery)
             {
                 reason = "the inner sequence has joins or subqueries of its own";
+                return false;
+            }
+
+            if (innerInspection.HasSimilar)
+            {
+                reason = "the inner sequence has a vector (Similar) clause";
                 return false;
             }
 
@@ -241,6 +266,16 @@ namespace Lucene.Net.Linq.Translation
         {
             delegation = null;
 
+            // Once the join is a filter, the whole query runs in Lucene, so
+            // every result operator must be one the Lucene path implements.
+            var inMemoryOnly = queryModel.ResultOperators.FirstOrDefault(o => !RunsInLucene(o));
+
+            if (inMemoryOnly != null)
+            {
+                reason = "result operator " + inMemoryOnly.GetType().Name.Replace("ResultOperator", "") + " only runs on rows in memory";
+                return false;
+            }
+
             if (!joinUsed)
             {
                 if (TryFilterOuterSide(queryModel, join, joinIndex, inner, innerModel, outerKey, innerKey, multiplicityMatters, out reason))
@@ -253,8 +288,9 @@ namespace Lucene.Net.Linq.Translation
                     return false;
                 }
 
-                // Nothing reads the rows (a Count): the inner side can be counted
-                // instead, which needs the outer key to be the unique one.
+                // Nothing reads either side's rows (a Count, or a select of
+                // constants): the query can run on the inner side instead,
+                // which needs the outer key to be the unique one.
                 string ignored;
                 return TryRunOnInnerSide(queryModel, join, joinIndex, inner, JoinInnerSequence.Resolve(join).QueryModel,
                     outerKey, innerKey, rowsAreRead, multiplicityMatters, out delegation, out ignored);
@@ -293,7 +329,7 @@ namespace Lucene.Net.Linq.Translation
             }
 
             string ignored;
-            var fromQuery = PrepareFromQuery(inner, innerModel, out ignored);
+            var fromQuery = PrepareFromQuery(inner, innerModel, innerKey.FieldName, out ignored);
             if (fromQuery == null) return false;
 
             queryModel.BodyClauses.Insert(queryModel.BodyClauses.IndexOf(join),
@@ -323,7 +359,7 @@ namespace Lucene.Net.Linq.Translation
                 return false;
             }
 
-            var fromQuery = PrepareFromQuery(inner, innerModel, out reason);
+            var fromQuery = PrepareFromQuery(inner, innerModel, innerKey.FieldName, out reason);
             if (fromQuery == null) return false;
 
             queryModel.BodyClauses[joinIndex] = new JoinFilterClause(new JoinFilter(fromQuery, innerKey.FieldName, outerKey.FieldName));
@@ -343,6 +379,15 @@ namespace Lucene.Net.Linq.Translation
             out Delegation delegation, out string reason)
         {
             delegation = null;
+
+            // The query's own ordering has to be the only one on the inner
+            // side's query, and without one the inner sequence's order would
+            // decide the order of the rows where today the outer side's does.
+            if (innerModel.BodyClauses.OfType<OrderByClause>().Any())
+            {
+                reason = "the inner sequence is ordered";
+                return false;
+            }
 
             if (multiplicityMatters && !IsSoleKey(self, outerKey))
             {
@@ -375,7 +420,7 @@ namespace Lucene.Net.Linq.Translation
             fromModel.ResultOperators.Clear();
             fromModel.SelectClause.Selector = new QuerySourceReferenceExpression(fromModel.MainFromClause);
 
-            var fromQuery = PrepareFromQuery(self, fromModel, out reason);
+            var fromQuery = PrepareFromQuery(self, fromModel, outerKey.FieldName, out reason);
             if (fromQuery == null) return false;
 
             // The rest of the query moves onto the inner side's own query.
@@ -414,7 +459,7 @@ namespace Lucene.Net.Linq.Translation
         /// The Lucene query matching one side's documents, or <c>null</c> with
         /// a <paramref name="reason"/> when it cannot be run as a plain query.
         /// </summary>
-        private static Query PrepareFromQuery(IJoinSource source, QueryModel model, out string reason)
+        private static Query PrepareFromQuery(IJoinSource source, QueryModel model, string keyField, out string reason)
         {
             var prepared = source.PrepareJoinQuery(model);
 
@@ -426,11 +471,18 @@ namespace Lucene.Net.Linq.Translation
 
             reason = null;
 
-            if (prepared.Filter == null) return prepared.Query;
-
             var combined = new BooleanQuery();
             combined.Add(prepared.Query, Occur.MUST);
-            combined.Add(new ConstantScoreQuery(prepared.Filter), Occur.MUST);
+
+            if (prepared.Filter != null)
+            {
+                combined.Add(new ConstantScoreQuery(prepared.Filter), Occur.MUST);
+            }
+
+            // A document without the key joins nothing. The join reads keys
+            // through FieldCache, which reports a missing key as an empty term.
+            combined.Add(new ConstantScoreQuery(new FieldValueFilter(keyField)), Occur.MUST);
+
             return combined;
         }
 
@@ -494,13 +546,24 @@ namespace Lucene.Net.Linq.Translation
             return expression is MethodCallExpression call && call.Method.DeclaringType == typeof(LuceneMethods) && call.Method.Name == nameof(LuceneMethods.Score);
         }
 
-        private static bool ContainsSubQuery(QueryModel model)
+        /// <summary>
+        /// The result operators the Lucene query path implements.
+        /// </summary>
+        private static bool RunsInLucene(ResultOperatorBase op)
+        {
+            return op is TakeResultOperator || op is SkipResultOperator
+                || op is FirstResultOperator || op is LastResultOperator || op is SingleResultOperator
+                || op is MinResultOperator || op is MaxResultOperator
+                || op is CountResultOperator || op is LongCountResultOperator || op is AnyResultOperator;
+        }
+
+        private static SourceReferences Inspect(QueryModel model)
         {
             var references = new SourceReferences();
             foreach (var clause in model.BodyClauses) references.Collect(clause);
             references.Collect(model.SelectClause.Selector);
             foreach (var op in model.ResultOperators) references.Collect(op);
-            return references.HasSubQuery;
+            return references;
         }
 
         private void Skipped(string reason)
@@ -522,6 +585,8 @@ namespace Lucene.Net.Linq.Translation
             private readonly HashSet<IQuerySource> sources = new HashSet<IQuerySource>();
 
             public bool HasSubQuery { get; private set; }
+
+            public bool HasSimilar { get; private set; }
 
             public bool Contains(IQuerySource source) => sources.Contains(source);
 
@@ -563,6 +628,16 @@ namespace Lucene.Net.Linq.Translation
             {
                 HasSubQuery = true;
                 return expression;
+            }
+
+            protected override Expression VisitMethodCall(MethodCallExpression node)
+            {
+                if (node.Method.DeclaringType == typeof(LuceneMethods) && node.Method.Name == nameof(LuceneMethods.Similar))
+                {
+                    HasSimilar = true;
+                }
+
+                return base.VisitMethodCall(node);
             }
         }
     }

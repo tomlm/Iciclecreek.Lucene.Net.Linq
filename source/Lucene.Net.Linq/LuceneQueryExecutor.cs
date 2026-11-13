@@ -213,9 +213,9 @@ namespace Lucene.Net.Linq
 
         public IEnumerable<T> ExecuteCollection<T>(QueryModel queryModel)
         {
-            // If the query contains joins, materialize both sides and join in memory.
-            // Lucene has no relational join — we execute each side as a separate search,
-            // then use LINQ-to-Objects Enumerable.Join with compiled key/result selectors.
+            // Joins whose result uses one side run inside Lucene: the planner either
+            // turns them into filters on this query or hands the query to the inner
+            // side's executor. Joins it leaves in the model are joined in memory below.
             var delegation = new JoinPushdownPlanner(this, Log).Plan(queryModel);
             if (delegation != null)
             {
@@ -325,13 +325,6 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// Handles queries with join clauses by materializing both sides and performing
-        /// an in-memory join. The outer side (main from clause) is executed as a normal
-        /// Lucene query. The inner side (join's InnerSequence) is evaluated and materialized.
-        /// Key selectors and the result projection are compiled from the query model's
-        /// expression trees.
-        /// </summary>
-        /// <summary>
         /// Runs a query that has join clauses and applies its result operators
         /// (Skip, Take, Count, Any, First…) to the joined rows, as LINQ defines
         /// them, rather than to the outer query before the join.
@@ -348,9 +341,20 @@ namespace Lucene.Net.Linq
             // result operators resolve their expressions against it.
             var rowInfo = queryModel.SelectClause.GetOutputDataInfo();
 
-            IStreamedData data = (IStreamedData)ExecuteJoinedRowsMethod
-                .MakeGenericMethod(rowInfo.ResultItemType)
-                .Invoke(this, new object[] { queryModel, joinClauses, rowInfo });
+            IStreamedData data;
+
+            try
+            {
+                data = (IStreamedData)ExecuteJoinedRowsMethod
+                    .MakeGenericMethod(rowInfo.ResultItemType)
+                    .Invoke(this, new object[] { queryModel, joinClauses, rowInfo });
+            }
+            catch (System.Reflection.TargetInvocationException e) when (e.InnerException != null)
+            {
+                // The join runs inside the reflective call; surface its own exception.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+                throw;
+            }
 
             foreach (var resultOperator in resultOperators)
             {
@@ -369,6 +373,13 @@ namespace Lucene.Net.Linq
             return new StreamedSequence(ExecuteJoinedCollection<T>(queryModel, joinClauses).AsQueryable(), rowInfo);
         }
 
+        /// <summary>
+        /// Joins in memory. The outer side (main from clause) runs as a normal
+        /// Lucene query; each join's inner sequence is then loaded, restricted to
+        /// the keys of the outer rows, and joined with LINQ to Objects. Key
+        /// selectors and the result projection are compiled from the query
+        /// model's expression trees.
+        /// </summary>
         private IEnumerable<T> ExecuteJoinedCollection<T>(QueryModel queryModel, List<JoinClause> joinClauses)
         {
             // Save references before mutating the query model

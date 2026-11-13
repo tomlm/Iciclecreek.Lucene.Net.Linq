@@ -26,7 +26,8 @@ namespace Lucene.Net.Linq.ScalarResultHandlers
 
         protected override object Execute(LuceneQueryModel luceneQueryModel, TopFieldDocs hits)
         {
-            return Math.Max(hits.TotalHits - luceneQueryModel.SkipResults, 0);
+            // Rows left after Skip, capped by Take.
+            return Math.Min(Math.Max(hits.TotalHits - luceneQueryModel.SkipResults, 0), luceneQueryModel.MaxResults);
         }
     }
 

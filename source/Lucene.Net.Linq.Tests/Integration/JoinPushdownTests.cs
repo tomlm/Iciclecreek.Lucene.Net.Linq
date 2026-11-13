@@ -531,8 +531,13 @@ namespace Lucene.Net.Linq.Tests.Integration
         [Test]
         public void Fallback_InnerSequenceHasResultOperators()
         {
-            BothPaths(() => (from s in Stories join w in Writers.Take(2) on s.WriterId equals w.Username select s.StoryId).ToList().Count,
-                "result operators");
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers.OrderBy(x => x.Username).Take(2) on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), "result operators");
+
+            // alice and bob are the first two writers; carol has no stories anyway.
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+            Assert.That(trace, Has.None.Contains("narrowed"));
         }
 
         [Test]
@@ -584,6 +589,133 @@ namespace Lucene.Net.Linq.Tests.Integration
                 (from s in Stories join w in Writers on s.WriterId equals w.Username into ws select new { s.StoryId, Count = ws.Count() }).ToList());
 
             Assert.That(trace, Has.Some.Contains("group joins and outer joins"));
+        }
+
+        [Test]
+        public void Fallback_OuterSourcePagedBeforeTheJoin()
+        {
+            // Rank order is s5, s4, s3, s2, s1: the page is s4 and s3, and only s3 has a writer.
+            var ids = BothPaths(() => (from s in Stories.OrderBy(x => x.Rank).Skip(1).Take(2)
+                                       join w in Writers on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), "outer source has paging", ordered: true);
+
+            Assert.That(ids, Is.EqualTo(new[] { "s3" }));
+            Assert.That(trace, Has.None.Contains("narrowed"));
+
+            // The same when the inner side is the one returned: only alice's stories.
+            var inner = BothPaths(() => (from w in Writers.OrderBy(x => x.Username).Take(1)
+                                         join s in Stories on w.Username equals s.WriterId
+                                         select s.StoryId).ToList(), "outer source has paging");
+
+            Assert.That(inner, Is.EquivalentTo(new[] { "s1", "s3" }));
+        }
+
+        [Test]
+        public void Count_AfterTakeAndSkip()
+        {
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Take(2).Count(), Pushed), Is.EqualTo(2));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Skip(1).Take(2).Count(), Pushed), Is.EqualTo(2));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Skip(3).Take(2).Count(), Pushed), Is.EqualTo(1));
+
+            // The same handler serves queries without a join.
+            Assert.That(Stories.Take(2).Count(), Is.EqualTo(2));
+            Assert.That(Stories.Skip(4).Take(3).Count(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Fallback_ResultOperatorsThatOnlyRunInMemory()
+        {
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Sum(),
+                "Sum only runs on rows in memory"), Is.EqualTo(13));
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).Contains("s4"),
+                "Contains only runs on rows in memory"), Is.False);
+
+            var sections = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.InSection).Distinct().ToList(),
+                "Distinct only runs on rows in memory");
+
+            Assert.That(sections, Is.EquivalentTo(new[] { "tech", "life", "none" }));
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceOrdered_WhenInnerSideSelected()
+        {
+            var ids = BothPaths(() => (from w in Writers
+                                       join s in Stories.OrderBy(x => x.StoryId) on w.Username equals s.WriterId
+                                       select s.StoryId).ToList(), "inner sequence is ordered");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceHasAProjection()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers.Select(x => new { x.Username }) on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), "projection");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceHasClausesThatAreNotFilters()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers.CaptureStatistics(_ => { }) on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), "cannot run as a join filter");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_QueryContainsASubQuery()
+        {
+            var wanted = new[] { "s1", "s2", "s4" };
+
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers on s.WriterId equals w.Username
+                                       where wanted.Contains(s.StoryId)
+                                       select s.StoryId).ToList(), "contains a subquery");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2" }));
+        }
+
+        [Test]
+        public void Fallback_OrderByScoreOfTheInnerSide()
+        {
+            trace.Clear();
+
+            try
+            {
+                (from w in Writers join s in Stories on w.Username equals s.WriterId orderby s.Score() select s.StoryId).ToList();
+            }
+            catch (Exception)
+            {
+                // The in-memory path cannot order by the inner side; only the decision is under test.
+            }
+
+            Assert.That(trace, Has.Some.Contains("orders the inner side by score"));
+        }
+
+        [Test]
+        public void Any_DocumentWithoutAKeyDoesNotJoinAnEmptyKey()
+        {
+            Add(new Section { SectionId = "unlabelled", Label = null });
+            Add(new Story { StoryId = "s9", WriterId = "nobody", InSection = "", Rank = 9 });
+
+            var any = BothPaths(() => (from s in Stories.Where(x => x.StoryId == "s9") join c in Sections on s.InSection equals c.Label select s).Any(), Pushed);
+
+            Assert.That(any, Is.False);
+        }
+
+        [Test]
+        public void InMemoryJoin_ThrowsItsOwnException()
+        {
+            provider.Settings.EnableJoinPushdown = false;
+
+            // Ordering by the inner side is not supported in memory; the error must not be wrapped.
+            Assert.That(() => (from w in Writers join s in Stories on w.Username equals s.WriterId orderby s.Rank select s.StoryId).ToList(),
+                Throws.Exception.Not.InstanceOf<System.Reflection.TargetInvocationException>());
         }
 
         [Test]

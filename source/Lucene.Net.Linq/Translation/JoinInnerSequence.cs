@@ -50,7 +50,14 @@ namespace Lucene.Net.Linq.Translation
             // sub-query, which cannot be compiled and evaluated like a constant.
             if (join.InnerSequence is SubQueryExpression subQuery)
             {
-                var root = Evaluate(subQuery.QueryModel.MainFromClause.FromExpression) as IQueryable;
+                // The queryable at the bottom, under any nested paging (authors.Take(5).Where(...)).
+                var source = subQuery.QueryModel.MainFromClause.FromExpression;
+                while (source is SubQueryExpression nested)
+                {
+                    source = nested.QueryModel.MainFromClause.FromExpression;
+                }
+
+                var root = Evaluate(source) as IQueryable;
 
                 if (root?.Provider is QueryProviderBase rootProvider)
                 {

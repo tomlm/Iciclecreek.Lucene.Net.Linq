@@ -9,8 +9,9 @@ namespace Lucene.Net.Linq.Clauses
     /// A join that is executed inside Lucene: only documents whose
     /// <see cref="JoinFilter.ToField"/> holds a term found in
     /// <see cref="JoinFilter.FromField"/> of some document matching
-    /// <see cref="JoinFilter.FromQuery"/> are kept. Replaces a
-    /// <see cref="JoinClause"/> whose other side the result does not use.
+    /// <see cref="JoinFilter.FromQuery"/> are kept. Stands in for a
+    /// <see cref="JoinClause"/> whose other side the result does not use, or
+    /// sits in front of one to narrow the outer side before an in-memory join.
     /// </summary>
     internal class JoinFilterClause : ExtensionClause<ConstantExpression>
     {

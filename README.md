@@ -458,16 +458,31 @@ joined in memory and the reason is logged at debug level
   need this. If duplicates were added with `KeyConstraint.None`, a row
   appears once instead of once per duplicate.
 - **Same provider:** both sides come from the same `LuceneDataProvider`.
-- **Plain unused side:** the unused side has only `Where` clauses: no
-  `Take`/`Skip`, no `.Similar(...)`, no joins of its own.
-- **Unordered outer side:** when the inner side is the one returned, the
-  outer side isn't ordered and the query doesn't order by score.
+- **Plain unused side:** the unused side is only filtered: no
+  `Take`/`Skip`, no projection, no joins of its own. An `OrderBy` on it
+  is ignored, since it can't affect the rows.
+- **Outer source not paged:** the outer source has no `Skip`/`Take` of
+  its own ahead of the join (`articles.Take(10).Join(...)`), because
+  that paging has to happen before the join.
+- **No vector clause:** neither side uses `.Similar(...)`, which picks
+  its nearest neighbours before any filter applies.
+- **Operators Lucene runs:** the query's result operators are among
+  `Skip`, `Take`, `First`, `Single`, `Last`, `Min`, `Max`, `Count`,
+  `LongCount` and `Any`. Others (`Sum`, `Average`, `Distinct`,
+  `Contains`, `All`...) are applied to the joined rows in memory.
+- **Unordered sides when the inner side is returned:** neither the outer
+  side nor the inner sequence is ordered, and the query doesn't order by
+  score.
 - **Inner join:** group joins and outer joins (`into` … `DefaultIfEmpty`)
   are not supported by either path.
 
 The first join on a key field reads that field's terms into Lucene's
 `FieldCache` (per segment, kept until the searcher reloads). A
 case-sensitive key with `DocValues = true` skips that cost.
+
+Both paths return the same rows. When a query pages without an
+`OrderBy`, which rows it gets is unspecified and can differ between
+them.
 
 Set `provider.Settings.EnableJoinPushdown = false` to always join in
 memory.
@@ -489,7 +504,8 @@ select new { article.Title, author.DisplayName }
 ```
 
 Narrowing needs no unique key. It is skipped when the inner sequence
-has its own `Take`/`Skip` or a `.Similar(...)` clause. It pays off when
+has its own `Take`/`Skip`, the outer source is paged ahead of the join,
+or either side has a `.Similar(...)` clause. It pays off when
 the inner side rules out much of the outer side; when nearly every
 outer document joins, it adds a small cost and removes nothing.
 
