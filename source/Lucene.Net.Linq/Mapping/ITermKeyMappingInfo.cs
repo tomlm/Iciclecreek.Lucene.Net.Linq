@@ -15,6 +15,14 @@ namespace Lucene.Net.Linq.Mapping
         string ConvertToTermText(object value);
 
         /// <summary>
+        /// What a Lucene sort on this field compares for a string
+        /// <paramref name="value"/>: the doc-values column when the field has
+        /// one (the value as written), otherwise the indexed term. Rows
+        /// ordered in memory use it to come out in the order Lucene gives.
+        /// </summary>
+        object ConvertToSortKey(object value);
+
+        /// <summary>
         /// How every value of this field is indexed, when that is known
         /// without looking at the values; decides whether the field can be
         /// the key of a join executed inside Lucene.

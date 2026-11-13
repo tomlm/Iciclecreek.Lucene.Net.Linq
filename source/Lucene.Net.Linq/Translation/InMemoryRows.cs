@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using Lucene.Net.Linq.Mapping;
 using Remotion.Linq;
 using Remotion.Linq.Clauses;
 using Remotion.Linq.Clauses.Expressions;
@@ -56,8 +57,12 @@ namespace Lucene.Net.Linq.Translation
 
         /// <summary>
         /// Applies <c>where</c> and <c>orderby</c> clauses to rows, in order.
+        /// <paramref name="mappingOf"/> gives the field mapping of an ordering
+        /// key that is a mapped property, so that strings are ordered the way
+        /// a Lucene sort on that field orders them.
         /// </summary>
-        public static IEnumerable<object[]> Apply(IEnumerable<object[]> rows, IEnumerable<IBodyClause> clauses, IList<IQuerySource> sources)
+        public static IEnumerable<object[]> Apply(IEnumerable<object[]> rows, IEnumerable<IBodyClause> clauses, IList<IQuerySource> sources,
+            Func<Expression, ITermKeyMappingInfo> mappingOf = null)
         {
             foreach (var clause in clauses)
             {
@@ -74,14 +79,22 @@ namespace Lucene.Net.Linq.Translation
                     {
                         var key = Compile<object>(ordering.Expression, sources);
                         var descending = ordering.OrderingDirection == OrderingDirection.Desc;
+                        var mapping = ordering.Expression.Type == typeof(string) ? mappingOf?.Invoke(ordering.Expression) : null;
 
+                        if (mapping != null)
+                        {
+                            var value = key;
+                            key = r => mapping.ConvertToSortKey(value(r));
+                        }
+
+                        // Strings are compared by ordinal, as a Lucene sort compares terms.
                         if (ordered == null)
                         {
-                            ordered = descending ? rows.OrderByDescending(key) : rows.OrderBy(key);
+                            ordered = descending ? rows.OrderByDescending(key, SortKeyComparer.Instance) : rows.OrderBy(key, SortKeyComparer.Instance);
                         }
                         else
                         {
-                            ordered = descending ? ordered.ThenByDescending(key) : ordered.ThenBy(key);
+                            ordered = descending ? ordered.ThenByDescending(key, SortKeyComparer.Instance) : ordered.ThenBy(key, SortKeyComparer.Instance);
                         }
                     }
 
@@ -321,6 +334,25 @@ namespace Lucene.Net.Linq.Translation
                 // ids.Contains(s.Id) is a sub-query that mentions s.
                 expression.QueryModel.TransformExpressions(Keep);
                 return expression;
+            }
+        }
+
+        /// <summary>
+        /// Orders strings by ordinal, as Lucene orders terms, and everything
+        /// else by its default comparer. Nulls come first.
+        /// </summary>
+        private sealed class SortKeyComparer : IComparer<object>
+        {
+            public static readonly SortKeyComparer Instance = new SortKeyComparer();
+
+            public int Compare(object x, object y)
+            {
+                if (x is string || y is string)
+                {
+                    return string.CompareOrdinal(x as string, y as string);
+                }
+
+                return Comparer<object>.Default.Compare(x, y);
             }
         }
 

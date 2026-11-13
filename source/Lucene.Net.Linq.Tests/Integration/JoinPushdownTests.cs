@@ -913,6 +913,78 @@ namespace Lucene.Net.Linq.Tests.Integration
         // ---- second review ------------------------------------------------------
 
         [Test]
+        public void WhereOnTheJoinedSource_FollowsTheFieldOnBothPaths()
+        {
+            // WriterNick is a default field (lowercased): "bobby" also matches the story indexed as "BOBBY",
+            // whether the join is pushed down (only s is selected) or runs in memory (both sides selected).
+            var oneSide = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                           where s.WriterNick == "bobby" select s.StoryId).ToList(), Pushed);
+
+            Assert.That(oneSide, Is.EquivalentTo(new[] { "s2", "s5" }));
+
+            var bothSides = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                             where s.WriterNick == "bobby" select w.Username + s.StoryId).ToList(), "uses both sides");
+
+            Assert.That(bothSides, Is.EquivalentTo(new[] { "bobs2", "bobs5" }));
+
+            // Summary is analyzed into words: == matches a word of it, as in any query on that field.
+            Assert.That(BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                         where s.Summary == "alice" select s.StoryId).ToList(), Pushed), Is.EquivalentTo(new[] { "s1", "s3" }));
+
+            Assert.That(BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                         where s.Summary == "alice" select w.Username + s.StoryId).ToList(), "uses both sides"), Is.EquivalentTo(new[] { "alices1", "alices3" }));
+
+            // With a second join the where still goes to the query of the one source it reads.
+            var threeWay = BothPaths(() => (from sec in Sections
+                                            join s in Stories on sec.SectionId equals s.InSection
+                                            join w in Writers on s.WriterId equals w.Username
+                                            where w.Nick == "ALLY"
+                                            select sec.Label + s.StoryId + w.Username).ToList(), "skipped");
+
+            Assert.That(threeWay, Is.EquivalentTo(new[] { "Technologys1alice", "Lifestyles3alice" }));
+        }
+
+        [Test]
+        public void WhereThatComparesTwoSources_RunsOnTheJoinedRowsAsCSharp()
+        {
+            // No single Lucene query can run this one, so it compares the loaded values exactly:
+            // only s5 has the writer's nick in the same casing ("bobby"). It uses both sides, so
+            // the join runs in memory whatever the setting and the result does not depend on it.
+            var ids = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                       where s.WriterNick == w.Nick select s.StoryId).ToList(), "uses both sides");
+
+            Assert.That(ids, Is.EqualTo(new[] { "s5" }));
+        }
+
+        [Test]
+        public void OrderByOnTheJoinedSource_SameOrderOnBothPaths()
+        {
+            Add(new Story { StoryId = "s6", WriterId = "Zed", InSection = "tech", WriterNick = "zed", Summary = "zed writes", WriterNumber = 7, Rank = 6 });
+
+            // WriterId is indexed as written and Lucene orders terms by ordinal: "Zed" comes before "alice".
+            var oneSide = BothPaths(() => (from sec in Sections join s in Stories on sec.SectionId equals s.InSection
+                                           orderby s.WriterId, s.StoryId select s.StoryId).ToList(), Pushed, ordered: true);
+
+            Assert.That(oneSide, Is.EqualTo(new[] { "s6", "s1", "s3", "s2", "s4" }));
+
+            var bothSides = BothPaths(() => (from sec in Sections join s in Stories on sec.SectionId equals s.InSection
+                                             orderby s.WriterId, s.StoryId select sec.SectionId + s.StoryId).ToList(), "uses both sides", ordered: true);
+
+            Assert.That(bothSides.Select(r => r.Substring(4)), Is.EqualTo(oneSide));
+
+            // WriterNick is lowercased in the index, so "ALLY" sorts with "ally" and "BOBBY" after them.
+            var lowercased = BothPaths(() => (from sec in Sections join s in Stories on sec.SectionId equals s.InSection
+                                              orderby s.WriterNick descending, s.StoryId select s.StoryId).ToList(), Pushed, ordered: true);
+
+            Assert.That(lowercased, Is.EqualTo(new[] { "s6", "s4", "s2", "s1", "s3" }));
+
+            var lowercasedBothSides = BothPaths(() => (from sec in Sections join s in Stories on sec.SectionId equals s.InSection
+                                                       orderby s.WriterNick descending, s.StoryId select sec.SectionId + s.StoryId).ToList(), "uses both sides", ordered: true);
+
+            Assert.That(lowercasedBothSides.Select(r => r.Substring(4)), Is.EqualTo(lowercased));
+        }
+
+        [Test]
         public void First_AfterPagingThatLeavesNoRows()
         {
             // Four joined rows by Rank: s5, s3, s2, s1.

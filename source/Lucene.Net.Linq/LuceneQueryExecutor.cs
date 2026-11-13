@@ -436,7 +436,15 @@ namespace Lucene.Net.Linq
             var sourceRows = (StreamedSequence)InvokeGeneric(RunAsSequenceMethod, sourceInfo.ResultItemType, subQuery.QueryModel, sourceInfo);
             var sources = new IQuerySource[] { queryModel.MainFromClause };
 
-            var filtered = InMemoryRows.Apply(sourceRows.Sequence.Cast<object>().Select(o => new[] { o }), clauses, sources);
+            // Rows that are this executor's documents are ordered as their fields sort in Lucene.
+            var providers = new Dictionary<IQuerySource, IFieldMappingInfoProvider>();
+            if (queryModel.MainFromClause.ItemType == typeof(TDocument))
+            {
+                providers[queryModel.MainFromClause] = this;
+            }
+
+            var filtered = InMemoryRows.Apply(sourceRows.Sequence.Cast<object>().Select(o => new[] { o }), clauses, sources,
+                e => GetTermKeyMapping(e, providers));
 
             return InMemoryRows.ApplyOperators(filtered, queryModel.SelectClause.Selector, sources, queryModel.SelectClause.GetOutputDataInfo(), operators);
         }
@@ -566,10 +574,14 @@ namespace Lucene.Net.Linq
             // to look keys up and compare them the way their fields are indexed.
             var keyProviders = new Dictionary<IQuerySource, IFieldMappingInfoProvider> { { mainFromClause, this } };
 
+            var innerSequences = joinClauses.Select(JoinInnerSequence.Resolve).ToList();
+
             // A where or orderby written after the first join that mentions a joined
-            // source cannot go into the outer side's Lucene query; it is applied to
-            // the joined rows. Once one orderby is applied there, every later
-            // orderby is too, so that the last one written stays the primary one.
+            // source cannot go into the outer side's Lucene query. A where that reads
+            // one joined source only goes into that source's own query; the others
+            // are applied to the joined rows. Once one orderby is applied there,
+            // every later orderby is too, so that the last one written stays the
+            // primary one.
             var rowSources = new List<IQuerySource> { mainFromClause };
             rowSources.AddRange(joinClauses);
 
@@ -581,7 +593,11 @@ namespace Lucene.Net.Linq
             {
                 if (!(clause is WhereClause) && !(clause is OrderByClause)) continue;
 
-                if (InMemoryRows.References(clause, joinedSources) || (clause is OrderByClause && orderingRows))
+                if (clause is WhereClause where && TryMoveToInnerQuery(where, mainFromClause, joinClauses, innerSequences))
+                {
+                    queryModel.BodyClauses.Remove(clause);
+                }
+                else if (InMemoryRows.References(clause, joinedSources) || (clause is OrderByClause && orderingRows))
                 {
                     rowClauses.Add(clause);
                     queryModel.BodyClauses.Remove(clause);
@@ -640,7 +656,7 @@ namespace Lucene.Net.Linq
                     Expression.Convert(outerKeyBody, typeof(object)), tupleParam).Compile();
 
                 // Resolve the inner sequence and find how each key is indexed.
-                var innerSequence = JoinInnerSequence.Resolve(joinClause);
+                var innerSequence = innerSequences[i];
                 if (innerSequence.ReturnsDocuments && innerSequence.Executor is IFieldMappingInfoProvider innerProvider)
                 {
                     keyProviders[joinClause] = innerProvider;
@@ -688,7 +704,9 @@ namespace Lucene.Net.Linq
                     (tuple, inner) => tuple.Append(inner).ToArray());
             }
 
-            runningResults = InMemoryRows.Apply(runningResults, rowClauses, rowSources);
+            // Strings are ordered as their fields sort in Lucene, so the order is
+            // the one the same orderby gives when the join runs inside Lucene.
+            runningResults = InMemoryRows.Apply(runningResults, rowClauses, rowSources, e => GetTermKeyMapping(e, keyProviders));
 
             // 3. Build the final result selector from the original SelectClause.
             //    Replace all source references with tuple element access.
@@ -703,6 +721,35 @@ namespace Lucene.Net.Linq
             var resultSelector = Expression.Lambda<Func<object[], T>>(selectorBody, finalTupleParam).Compile();
 
             return runningResults.Select(resultSelector);
+        }
+
+        /// <summary>
+        /// Moves a <c>where</c> that reads exactly one joined source into that
+        /// source's own Lucene query. Such a filter keeps or drops an inner
+        /// document whatever it joins, so the joined rows are the same, and it
+        /// then means what it means when the join runs inside Lucene (it
+        /// follows the field's analyzer and case handling) instead of being
+        /// compared as C# values on the joined rows.
+        /// </summary>
+        private static bool TryMoveToInnerQuery(WhereClause where, IQuerySource main, List<JoinClause> joinClauses, List<JoinInnerSequence> innerSequences)
+        {
+            if (InMemoryRows.References(where, new[] { main })) return false;
+
+            var read = joinClauses.Where(j => InMemoryRows.References(where, new IQuerySource[] { j })).ToList();
+            if (read.Count != 1) return false;
+
+            var inner = innerSequences[joinClauses.IndexOf(read[0])];
+
+            // A local sequence has no query; a projection hides the documents; and
+            // a filter added to a paged query would run ahead of its Take or Skip.
+            if (inner.QueryModel == null || !inner.ReturnsDocuments || inner.QueryModel.ResultOperators.Count > 0) return false;
+
+            var toInner = new QuerySourceMapping();
+            toInner.AddMapping(read[0], new Remotion.Linq.Clauses.Expressions.QuerySourceReferenceExpression(inner.QueryModel.MainFromClause));
+            where.TransformExpressions(e => ReferenceReplacingExpressionVisitor.ReplaceClauseReferences(e, toInner, throwOnUnmappedReferences: false));
+
+            inner.QueryModel.BodyClauses.Add(where);
+            return true;
         }
 
         /// <summary>

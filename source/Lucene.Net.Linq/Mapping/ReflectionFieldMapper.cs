@@ -425,6 +425,11 @@ namespace Lucene.Net.Linq.Mapping
 
         string ITermKeyMappingInfo.ConvertToTermText(object value) => ConvertToTermText(value);
 
+        object ITermKeyMappingInfo.ConvertToSortKey(object value)
+        {
+            return docValues || !(value is string) ? value : ConvertToTermText(value) ?? value;
+        }
+
         JoinTermForm ITermKeyMappingInfo.JoinTermForm => JoinTermForm;
 
         /// <summary>
