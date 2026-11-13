@@ -702,6 +702,29 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void InnerSequenceOrdered_OrderByAfterTheJoinDecidesTheOrder()
+        {
+            trace.Clear();
+
+            // The in-memory path cannot order by the inner side, so there is nothing to compare with.
+            var ids = (from w in Writers
+                       join s in Stories.OrderBy(x => x.StoryId) on w.Username equals s.WriterId
+                       orderby s.Rank
+                       select s.StoryId).ToList();
+
+            Assert.That(trace, Has.Some.Contains(Pushed));
+            Assert.That(ids, Is.EqualTo(new[] { "s5", "s3", "s2", "s1" }), "by Rank, not by StoryId");
+
+            // The inner sequence's order still breaks ties: s3 and s2 are both in "life".
+            var tied = (from w in Writers
+                        join s in Stories.OrderByDescending(x => x.StoryId) on w.Username equals s.WriterId
+                        orderby s.InSection
+                        select s.StoryId).ToList();
+
+            Assert.That(tied, Is.EqualTo(new[] { "s3", "s2", "s5", "s1" }));
+        }
+
+        [Test]
         public void Fallback_InnerSequenceHasAProjection()
         {
             var ids = BothPaths(() => (from s in Stories

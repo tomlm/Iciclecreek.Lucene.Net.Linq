@@ -391,10 +391,17 @@ namespace Lucene.Net.Linq.Translation
         {
             delegation = null;
 
-            // The query's own ordering has to be the only one on the inner
-            // side's query, and without one the inner sequence's order would
-            // decide the order of the rows where today the outer side's does.
-            if (innerModel.BodyClauses.OfType<OrderByClause>().Any())
+            var innerClauses = queryModel.BodyClauses.Skip(joinIndex + 1).ToList();
+
+            // Sort fields are added in clause order, so an ordering of the
+            // inner sequence must not stay ahead of the query's own. With an
+            // orderby after the join it is moved behind it, where it only
+            // breaks ties, as it would under LINQ's stable sort. Without one
+            // it would decide the order of the rows, where the outer side's
+            // order does in a LINQ join.
+            var innerOrderings = innerModel.BodyClauses.OfType<OrderByClause>().ToList();
+
+            if (innerOrderings.Count > 0 && !innerClauses.OfType<OrderByClause>().Any())
             {
                 reason = "the inner sequence is ordered";
                 return false;
@@ -417,8 +424,6 @@ namespace Lucene.Net.Linq.Translation
                 return false;
             }
 
-            var innerClauses = queryModel.BodyClauses.Skip(joinIndex + 1).ToList();
-
             if (innerClauses.OfType<OrderByClause>().Any(o => o.Orderings.Any(x => OrdersByScore(x.Expression))))
             {
                 reason = "the query orders the inner side by score";
@@ -439,6 +444,8 @@ namespace Lucene.Net.Linq.Translation
             toInner.AddMapping(join, new QuerySourceReferenceExpression(innerModel.MainFromClause));
             Func<Expression, Expression> rewrite = e => ReferenceReplacingExpressionVisitor.ReplaceClauseReferences(e, toInner, throwOnUnmappedReferences: false);
 
+            foreach (var ordering in innerOrderings) innerModel.BodyClauses.Remove(ordering);
+
             innerModel.BodyClauses.Add(new JoinFilterClause(new JoinFilter(fromQuery, outerKey.FieldName, innerKey.FieldName)));
 
             foreach (var clause in innerClauses)
@@ -446,6 +453,8 @@ namespace Lucene.Net.Linq.Translation
                 clause.TransformExpressions(rewrite);
                 innerModel.BodyClauses.Add(clause);
             }
+
+            foreach (var ordering in innerOrderings) innerModel.BodyClauses.Add(ordering);
 
             innerModel.SelectClause.Selector = rowsAreRead
                 ? rewrite(queryModel.SelectClause.Selector)

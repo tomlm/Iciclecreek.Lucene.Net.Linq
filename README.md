@@ -471,9 +471,11 @@ joined in memory and the reason is logged at debug level
   `LongCount` and `Any`. Others (`Sum`, `Average`, `Distinct`,
   `Contains`, `All`...) are applied to the joined rows in memory, and so
   is a `Min` or `Max` that follows a `Skip` or `Take`.
-- **Unordered sides when the inner side is returned:** neither the outer
-  side nor the inner sequence is ordered, and the query doesn't order by
-  score.
+- **Ordering when the inner side is returned:** the outer side is not
+  ordered and the query doesn't order by score. An `OrderBy` on the
+  inner sequence (`join a in articles.OrderBy(...)`) needs an `orderby`
+  after the join, which then decides the order; the inner sequence's
+  own order only breaks ties.
 - **Inner join:** group joins and outer joins (`into` … `DefaultIfEmpty`)
   are not supported by either path.
 
