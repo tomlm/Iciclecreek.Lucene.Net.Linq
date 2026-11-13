@@ -22,6 +22,7 @@ using Microsoft.Extensions.Logging;
 using Remotion.Linq;
 using Remotion.Linq.Clauses;
 using Remotion.Linq.Clauses.ExpressionVisitors;
+using Remotion.Linq.Clauses.StreamedData;
 
 namespace Lucene.Net.Linq
 {
@@ -121,6 +122,12 @@ namespace Lucene.Net.Linq
 
         public T ExecuteScalar<T>(QueryModel queryModel)
         {
+            // Count, Any and other scalars over a join are computed from the joined rows.
+            if (queryModel.BodyClauses.OfType<JoinClause>().Any())
+            {
+                return (T)((StreamedValue)ExecuteJoinedInMemory(queryModel)).Value;
+            }
+
             var watch = new Stopwatch();
             watch.Start();
 
@@ -197,11 +204,20 @@ namespace Lucene.Net.Linq
             // If the query contains joins, materialize both sides and join in memory.
             // Lucene has no relational join — we execute each side as a separate search,
             // then use LINQ-to-Objects Enumerable.Join with compiled key/result selectors.
-            var joinClauses = queryModel.BodyClauses.OfType<JoinClause>().ToList();
-            if (joinClauses.Count > 0)
+            if (queryModel.BodyClauses.OfType<JoinClause>().Any())
             {
-                foreach (var item in ExecuteJoinedCollection<T>(queryModel, joinClauses))
-                    yield return item;
+                var joined = ExecuteJoinedInMemory(queryModel);
+
+                if (joined is StreamedSequence sequence)
+                {
+                    foreach (var item in sequence.Sequence)
+                        yield return (T)item;
+                }
+                else
+                {
+                    // First, Single, Min… arrive here through ExecuteSingle.
+                    yield return (T)((StreamedValue)joined).Value;
+                }
                 yield break;
             }
 
@@ -295,11 +311,53 @@ namespace Lucene.Net.Linq
         /// Key selectors and the result projection are compiled from the query model's
         /// expression trees.
         /// </summary>
+        /// <summary>
+        /// Runs a query that has join clauses and applies its result operators
+        /// (Skip, Take, Count, Any, First…) to the joined rows, as LINQ defines
+        /// them, rather than to the outer query before the join.
+        /// </summary>
+        private IStreamedData ExecuteJoinedInMemory(QueryModel queryModel)
+        {
+            var joinClauses = queryModel.BodyClauses.OfType<JoinClause>().ToList();
+
+            // Taken off the model so the outer query runs without them.
+            var resultOperators = queryModel.ResultOperators.ToList();
+            queryModel.ResultOperators.Clear();
+
+            // Captured before ExecuteJoinedRows rewrites the select clause; the
+            // result operators resolve their expressions against it.
+            var rowInfo = queryModel.SelectClause.GetOutputDataInfo();
+
+            IStreamedData data = (IStreamedData)ExecuteJoinedRowsMethod
+                .MakeGenericMethod(rowInfo.ResultItemType)
+                .Invoke(this, new object[] { queryModel, joinClauses, rowInfo });
+
+            foreach (var resultOperator in resultOperators)
+            {
+                data = resultOperator.ExecuteInMemory(data);
+            }
+
+            return data;
+        }
+
+        private static readonly System.Reflection.MethodInfo ExecuteJoinedRowsMethod =
+            typeof(LuceneQueryExecutorBase<TDocument>).GetMethod(nameof(ExecuteJoinedRows),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        private StreamedSequence ExecuteJoinedRows<T>(QueryModel queryModel, List<JoinClause> joinClauses, StreamedSequenceInfo rowInfo)
+        {
+            return new StreamedSequence(ExecuteJoinedCollection<T>(queryModel, joinClauses).AsQueryable(), rowInfo);
+        }
+
         private IEnumerable<T> ExecuteJoinedCollection<T>(QueryModel queryModel, List<JoinClause> joinClauses)
         {
             // Save references before mutating the query model
             var mainFromClause = queryModel.MainFromClause;
             var selectSelector = queryModel.SelectClause.Selector;
+
+            // Mapping providers for the main source and each joined source, used
+            // to look keys up and compare them the way their fields are indexed.
+            var keyProviders = new Dictionary<IQuerySource, IFieldMappingInfoProvider> { { mainFromClause, this } };
 
             // Strip join clauses so PrepareQuery only sees WHERE/ORDER/etc.
             foreach (var jc in joinClauses)
@@ -351,11 +409,29 @@ namespace Lucene.Net.Linq
                 var outerKeySelector = Expression.Lambda<Func<object[], object>>(
                     Expression.Convert(outerKeyBody, typeof(object)), tupleParam).Compile();
 
+                // Evaluate the inner sequence and find how each key is indexed.
+                var innerSequence = Expression.Lambda<Func<object>>(
+                    Expression.Convert(joinClause.InnerSequence, typeof(object))).Compile()();
+                var innerProvider = ((innerSequence as IQueryable)?.Provider as QueryProviderBase)?.Executor as IFieldMappingInfoProvider;
+                if (innerProvider != null) keyProviders[joinClause] = innerProvider;
+
+                var outerKeyMapping = GetTermKeyMapping(joinClause.OuterKeySelector, keyProviders);
+                var innerKeyMapping = GetTermKeyMapping(joinClause.InnerKeySelector, keyProviders);
+
+                // String keys are compared by the term they are indexed as, so the
+                // join follows the fields' configuration (a default-mapped field
+                // is case-insensitive) exactly as a query on those fields does.
+                if (outerKeyMapping != null && innerKeyMapping != null && joinClause.OuterKeySelector.Type == typeof(string))
+                {
+                    var rawOuterKeySelector = outerKeySelector;
+                    outerKeySelector = tuple => ToTermKey(outerKeyMapping, rawOuterKeySelector(tuple));
+                }
+
                 // Extract distinct outer key values for semi-join pushdown
                 var outerKeys = runningResults.Select(outerKeySelector).Where(k => k != null).Distinct().ToList();
 
                 // Materialize inner side
-                var innerResults = MaterializeInnerWithSemiJoin(joinClause, outerKeys);
+                var innerResults = MaterializeInnerWithSemiJoin(joinClause, innerSequence, innerKeyMapping, outerKeys);
                 Log.LogDebug("Join[{Index}]: inner query returned {Count} results (from {KeyCount} outer keys)",
                     i, innerResults.Length, outerKeys.Count);
 
@@ -365,6 +441,12 @@ namespace Lucene.Net.Linq
                     Expression.Convert(innerParam, joinClause.ItemType));
                 var innerKeySelector = Expression.Lambda<Func<object, object>>(
                     Expression.Convert(innerKeyBody, typeof(object)), innerParam).Compile();
+
+                if (outerKeyMapping != null && innerKeyMapping != null && joinClause.OuterKeySelector.Type == typeof(string))
+                {
+                    var rawInnerKeySelector = innerKeySelector;
+                    innerKeySelector = inner => ToTermKey(innerKeyMapping, rawInnerKeySelector(inner));
+                }
 
                 // Join: append inner to each tuple
                 var capturedInner = innerResults; // capture for closure
@@ -394,21 +476,50 @@ namespace Lucene.Net.Linq
         /// Materializes the inner side of a join, using a TermsFilter to only fetch
         /// documents whose join key matches one of the outer key values (semi-join pushdown).
         /// </summary>
-        private object[] MaterializeInnerWithSemiJoin(JoinClause joinClause, List<object> outerKeys)
+        private object[] MaterializeInnerWithSemiJoin(JoinClause joinClause, object innerObj, ITermKeyMappingInfo innerKeyMapping, List<object> outerKeys)
         {
             if (outerKeys.Count == 0)
                 return Array.Empty<object>();
 
-            var innerObj = Expression.Lambda<Func<object>>(
-                Expression.Convert(joinClause.InnerSequence, typeof(object)))
-                .Compile()();
-
             if (innerObj is IQueryable innerQueryable)
             {
-                var innerKeyFieldName = ExtractFieldName(joinClause.InnerKeySelector);
-                if (innerKeyFieldName != null)
+                List<Term> terms = null;
+                string innerKeyFieldName;
+
+                if (innerKeyMapping != null)
                 {
-                    var terms = outerKeys.Select(k => new Term(innerKeyFieldName, k.ToString())).ToList();
+                    // Look keys up by the mapped field name and the term each key
+                    // is indexed as (converted, analyzed, or prefix-coded).
+                    innerKeyFieldName = innerKeyMapping.FieldName;
+                    terms = new List<Term>(outerKeys.Count);
+
+                    foreach (var key in outerKeys)
+                    {
+                        var text = innerKeyMapping.ConvertToTermText(key);
+
+                        if (text == null)
+                        {
+                            // A key with no single-term form cannot be looked up; load the whole inner side.
+                            Log.LogDebug("Join semi-join pushdown skipped: key {Key} has no single indexed term in {Field}", key, innerKeyFieldName);
+                            terms = null;
+                            break;
+                        }
+
+                        terms.Add(new Term(innerKeyFieldName, text));
+                    }
+                }
+                else
+                {
+                    innerKeyFieldName = ExtractFieldName(joinClause.InnerKeySelector);
+
+                    if (innerKeyFieldName != null)
+                    {
+                        terms = outerKeys.Select(k => new Term(innerKeyFieldName, k.ToString())).ToList();
+                    }
+                }
+
+                if (terms != null)
+                {
                     var termsFilter = new Lucene.Net.Queries.TermsFilter(terms);
                     var filterQuery = new ConstantScoreQuery(termsFilter);
                     Log.LogDebug("Join semi-join pushdown: TermsFilter on {Field} with {Count} keys",
@@ -424,6 +535,43 @@ namespace Lucene.Net.Linq
                 return enumerable.Cast<object>().ToArray();
 
             return Array.Empty<object>();
+        }
+
+        /// <summary>
+        /// The mapping of a join key that is a plain mapped property of one of
+        /// the joined sources (<c>a.Key</c>), or <c>null</c> for composite or
+        /// computed keys and for mappers that cannot name their indexed term.
+        /// </summary>
+        private static ITermKeyMappingInfo GetTermKeyMapping(Expression keySelector, Dictionary<IQuerySource, IFieldMappingInfoProvider> providers)
+        {
+            while (keySelector is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
+            {
+                keySelector = unary.Operand;
+            }
+
+            if (!(keySelector is MemberExpression member)
+                || !(member.Expression is Remotion.Linq.Clauses.Expressions.QuerySourceReferenceExpression source)
+                || !providers.TryGetValue(source.ReferencedQuerySource, out var provider))
+            {
+                return null;
+            }
+
+            try
+            {
+                return provider.GetMappingInfo(member.Member.Name) as ITermKeyMappingInfo;
+            }
+            catch (KeyNotFoundException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The key as the term it is indexed as; the key itself when it has none.
+        /// </summary>
+        private static object ToTermKey(ITermKeyMappingInfo mapping, object key)
+        {
+            return key == null ? null : mapping.ConvertToTermText(key) ?? key;
         }
 
         /// <summary>
