@@ -15,6 +15,7 @@ namespace Lucene.Net.Linq
             DeletionPolicy = new KeepOnlyLastCommitDeletionPolicy();
             RAMBufferSizeMB = IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB;
             EnableJoinPushdown = true;
+            VectorExactSearchLimit = 10000;
         }
 
         /// <summary>
@@ -67,5 +68,17 @@ namespace Lucene.Net.Linq
         /// using <see cref="LuceneMethods.Similar"/> generate embeddings at query time.
         /// </summary>
         public IEmbeddingGenerator<string, Embedding<float>> EmbeddingGenerator { get; set; }
+
+        /// <summary>
+        /// Decides how a query that is only a <see cref="LuceneMethods.Similar"/>
+        /// call finds its nearest documents. The search filter (the document type,
+        /// joins run inside Lucene) is applied first. When it leaves no more than
+        /// this many documents, each of them is compared with the query vector:
+        /// exact, and no vector index is built. Above the limit the approximate
+        /// (HNSW) index is searched instead, where the runtime has one.
+        /// Default 10,000. Does not apply when Similar is combined with other
+        /// conditions: those always select the documents to compare.
+        /// </summary>
+        public int VectorExactSearchLimit { get; set; }
     }
 }

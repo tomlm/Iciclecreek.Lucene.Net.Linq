@@ -808,18 +808,18 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
-        public void Fallback_VectorClause_OnTheReturnedSide()
+        public void VectorClause_OnTheReturnedSide_IsPushedDown()
         {
-            // A vector query takes its nearest neighbours before a join filter
-            // applies, so it must not be combined with one. Only the decision is
-            // under test: running the query needs a vector field and a model.
+            // The join becomes a filter, and a filter narrows the documents before
+            // nearest neighbours are chosen (see VectorFilterFirstTests). Only the
+            // decision is under test: running the query needs a vector field.
             trace.Clear();
             Assert.Catch(() => (from s in Stories.Where(x => x.Summary.Similar("cats")) join w in Writers on s.WriterId equals w.Username select s).Take(2).ToList());
-            Assert.That(trace, Is.EqualTo(new[] { "skipped: the query has a vector (Similar) clause" }));
+            Assert.That(trace, Has.Some.Contains(Pushed));
 
             trace.Clear();
             Assert.Catch(() => (from w in Writers join s in Stories.Where(x => x.Summary.Similar("cats")) on w.Username equals s.WriterId select s).Take(2).ToList());
-            Assert.That(trace, Is.EqualTo(new[] { "skipped: the inner sequence has a vector (Similar) clause" }));
+            Assert.That(trace, Has.Some.Contains(Pushed));
         }
 
         [Test]

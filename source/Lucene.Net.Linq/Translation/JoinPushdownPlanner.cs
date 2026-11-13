@@ -116,13 +116,6 @@ namespace Lucene.Net.Linq.Translation
                 return null;
             }
 
-            // A vector query picks its nearest neighbours before any filter applies.
-            if (inspection.HasSimilar)
-            {
-                Skipped("the query has a vector (Similar) clause");
-                return null;
-            }
-
             foreach (var join in joins)
             {
                 string reason;
@@ -233,12 +226,6 @@ namespace Lucene.Net.Linq.Translation
             if (innerModel.BodyClauses.OfType<JoinClause>().Any() || innerInspection.HasSubQuery)
             {
                 reason = "the inner sequence has joins or subqueries of its own";
-                return false;
-            }
-
-            if (innerInspection.HasSimilar)
-            {
-                reason = "the inner sequence has a vector (Similar) clause";
                 return false;
             }
 
@@ -468,7 +455,7 @@ namespace Lucene.Net.Linq.Translation
         {
             var prepared = source.PrepareJoinQuery(model);
 
-            if (ContainsVectorQuery(prepared.Query))
+            if (VectorQueryResolver.ContainsVectorQuery(prepared.Query))
             {
                 reason = "the side that would become a filter has a vector (Similar) clause";
                 return null;
@@ -489,13 +476,6 @@ namespace Lucene.Net.Linq.Translation
             combined.Add(new ConstantScoreQuery(new FieldValueFilter(keyField)), Occur.MUST);
 
             return combined;
-        }
-
-        private static bool ContainsVectorQuery(Query query)
-        {
-            if (query is DeferredVectorQuery) return true;
-
-            return query is BooleanQuery boolean && boolean.GetClauses().Any(c => ContainsVectorQuery(c.Query));
         }
 
         /// <summary>
@@ -580,8 +560,6 @@ namespace Lucene.Net.Linq.Translation
 
             public bool HasSubQuery { get; private set; }
 
-            public bool HasSimilar { get; private set; }
-
             public bool Contains(IQuerySource source) => sources.Contains(source);
 
             public void Collect(Expression expression)
@@ -622,16 +600,6 @@ namespace Lucene.Net.Linq.Translation
             {
                 HasSubQuery = true;
                 return expression;
-            }
-
-            protected override Expression VisitMethodCall(MethodCallExpression node)
-            {
-                if (node.Method.DeclaringType == typeof(LuceneMethods) && node.Method.Name == nameof(LuceneMethods.Similar))
-                {
-                    HasSimilar = true;
-                }
-
-                return base.VisitMethodCall(node);
             }
         }
     }

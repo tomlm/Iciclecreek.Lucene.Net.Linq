@@ -464,8 +464,10 @@ joined in memory and the reason is logged at debug level
 - **Outer source not paged:** the outer source has no `Skip`/`Take` of
   its own ahead of the join (`articles.Take(10).Join(...)`), because
   that paging has to happen before the join.
-- **No vector clause:** neither side uses `.Similar(...)`, which picks
-  its nearest neighbours before any filter applies.
+- **No vector clause on the unused side:** the side that becomes a
+  filter has no `.Similar(...)`: "the nearest documents" is not a set a
+  filter can stand for. The returned side may use `.Similar(...)`; the
+  join then narrows the documents before the nearest are chosen.
 - **Unordered sides when the inner side is returned:** neither the outer
   side nor the inner sequence is ordered ahead of the join, and the
   query doesn't order by score. In a LINQ join the rows follow the
@@ -509,7 +511,7 @@ select new { article.Title, author.DisplayName }
 
 Narrowing needs no unique key. It is skipped when the inner sequence
 has its own `Take`/`Skip`, the outer source is paged ahead of the join,
-or either side has a `.Similar(...)` clause. It pays off when
+or the inner sequence has a `.Similar(...)` clause. It pays off when
 the inner side rules out much of the outer side; when nearly every
 outer document joins, it adds a small cost and removes nothing.
 
@@ -759,8 +761,9 @@ How it behaves:
     numeric doc-values, so range counts don't work on them.
 - **Vector queries:** facets count the same resolved query as the
   results. For a pure `.Similar(...)` query the matching set is the K
-  nearest neighbours, where K is the `Take` value (10 without a `Take`
-  or with `Take(0)`).
+  nearest neighbours among the documents the search filter leaves,
+  where K is the `Take` value plus any `Skip` (10 without a `Take` or
+  with `Take(0)`).
   With other predicates, the predicates decide the matching set.
 - **Existing indexes:** documents written before `Facet` was set have
   neither facet values nor the `{Field}$range` column. They are still
@@ -949,6 +952,34 @@ var results = provider.AsQueryable<Article>()
     .Take(3)
     .ToList();
 ```
+
+### Filters run before vectors
+
+Comparing vectors is the expensive part of a query, so every other
+condition narrows the documents first:
+
+- **Other conditions select, `Similar` ranks.** It makes no difference
+  whether the conditions share a `Where` with `Similar`, come in an
+  earlier or later `Where`, or are a Lucene `Query`. Only the documents
+  they select are compared with the query vector. Nothing is cut off:
+  without a `Take` every selected document comes back, most similar
+  first.
+- **`Similar` alone returns the K nearest.** K is the `Take` (plus any
+  `Skip`), or 10. The document type and any join that runs inside
+  Lucene are applied before the K are chosen, so the K are always
+  documents the query can return.
+  - When that leaves no more than
+    `Settings.VectorExactSearchLimit` documents (default 10,000), each
+    is compared with the query vector. The result is exact and no
+    vector index is built.
+  - Above the limit the approximate (HNSW) index is searched, on
+    runtimes that have it (.NET 10). Other runtimes always compare
+    one by one.
+- **Several `Similar` calls** in one query score the selected documents
+  by each and add the scores.
+- **`a || x.Similar(q)`** matches the documents of `a` plus the K
+  nearest.
+- **`!x.Similar(q)`** throws `NotSupportedException`.
 
 
 

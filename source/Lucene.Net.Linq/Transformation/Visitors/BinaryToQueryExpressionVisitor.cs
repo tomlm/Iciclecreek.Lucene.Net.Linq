@@ -55,10 +55,25 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             }
             else
             {
+                if (IsSimilar(expression.Left) || IsSimilar(expression.Right))
+                {
+                    throw new NotSupportedException(
+                        "Similar() cannot be negated or compared with a value: there is no set of documents that are \"not similar\". " +
+                        "Use Similar() to rank the documents the other conditions select.");
+                }
+
                 throw new NotSupportedException("Expected Left or Right to be LuceneQueryFieldExpression");
             }
 
             return new LuceneQueryPredicateExpression(fieldExpression, pattern, occur, queryType);
+        }
+
+        private static bool IsSimilar(Expression expression)
+        {
+            return expression is LuceneVectorQueryExpression
+                || (expression is MethodCallExpression call
+                    && call.Method.DeclaringType == typeof(LuceneMethods)
+                    && call.Method.Name == nameof(LuceneMethods.Similar));
         }
     }
 }
