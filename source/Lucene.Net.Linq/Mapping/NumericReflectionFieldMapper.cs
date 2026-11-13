@@ -246,6 +246,29 @@ namespace Lucene.Net.Linq.Mapping
             return ((ValueType) value).ToPrefixCoded();
         }
 
+        /// <summary>
+        /// A numeric field indexes several trie terms per value, so it cannot
+        /// be the key of a join executed inside Lucene.
+        /// </summary>
+        internal override JoinTermForm JoinTermForm => JoinTermForm.None;
+
+        /// <summary>
+        /// A numeric value is looked up by its full-precision trie term.
+        /// </summary>
+        internal override string ConvertToTermText(object value)
+        {
+            if (value == null) return null;
+
+            try
+            {
+                return ConvertToQueryExpression(value);
+            }
+            catch (Exception e) when (e is InvalidCastException || e is FormatException || e is OverflowException || e is NotSupportedException)
+            {
+                return null;
+            }
+        }
+
         public override string EscapeSpecialCharacters(string value)
         {
             // no need to escape since value will not be parsed.

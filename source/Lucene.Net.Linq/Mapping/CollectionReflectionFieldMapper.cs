@@ -28,6 +28,14 @@ namespace Lucene.Net.Linq.Mapping
             throw new NotSupportedException("Range facets are not supported on collection property " + PropertyName + ".");
         }
 
+        /// <summary>
+        /// A collection property has several terms per document, so it has no
+        /// single-term key form.
+        /// </summary>
+        internal override string ConvertToTermText(object value) => null;
+
+        internal override JoinTermForm JoinTermForm => JoinTermForm.None;
+
         public override IEnumerable<string> GetFacetValues(T source)
         {
             if (!facet) yield break;

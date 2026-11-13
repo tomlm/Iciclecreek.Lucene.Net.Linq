@@ -69,6 +69,8 @@ namespace Lucene.Net.Linq.Translation
 
         public override void VisitOrderByClause(OrderByClause orderByClause, QueryModel queryModel, int index)
         {
+            model.BeginOrderByClause();
+
             foreach (var ordering in orderByClause.Orderings)
             {
                 model.AddSort(ordering.Expression, ordering.OrderingDirection);
@@ -93,6 +95,11 @@ namespace Lucene.Net.Linq.Translation
         public void VisitFacetsClause(FacetsClause clause, QueryModel queryModel, int index)
         {
             model.AddFacetQuery(clause.FacetQuery);
+        }
+
+        public void VisitJoinFilterClause(JoinFilterClause clause, QueryModel queryModel, int index)
+        {
+            model.AddJoinFilter(clause.JoinFilter);
         }
 
         private void AddPolymorphicTypeFilter()

@@ -109,9 +109,10 @@ namespace Lucene.Net.Linq.Tests.Translation
 
             transformer.VisitOrderByClause(orderByClause, queryModel, 1);
 
+            // As in LINQ, the later orderby clause is the primary sort and the earlier one breaks ties.
             Assert.That(transformer.Model.Sort.GetSort().Length, Is.EqualTo(2));
-            AssertSortFieldEquals(transformer.Model.Sort.GetSort()[0], "Name", OrderingDirection.Asc, SortFieldType.STRING);
-            AssertSortFieldEquals(transformer.Model.Sort.GetSort()[1], "Id", OrderingDirection.Desc, SortFieldType.INT64);
+            AssertSortFieldEquals(transformer.Model.Sort.GetSort()[0], "Id", OrderingDirection.Desc, SortFieldType.INT64);
+            AssertSortFieldEquals(transformer.Model.Sort.GetSort()[1], "Name", OrderingDirection.Asc, SortFieldType.STRING);
         }
 
         [Test]

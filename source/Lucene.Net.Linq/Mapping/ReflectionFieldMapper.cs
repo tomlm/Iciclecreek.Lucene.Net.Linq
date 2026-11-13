@@ -7,6 +7,7 @@ using System.Reflection;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
+using Lucene.Net.Linq.Analysis;
 using Lucene.Net.Linq.Search;
 using Lucene.Net.Linq.Util;
 using Lucene.Net.QueryParsers.Classic;
@@ -18,7 +19,7 @@ using System.Collections.Concurrent;
 
 namespace Lucene.Net.Linq.Mapping
 {
-    public class ReflectionFieldMapper<T> : IFacetFieldMapper<T>, IDocumentFieldConverter
+    public class ReflectionFieldMapper<T> : IFacetFieldMapper<T>, IDocumentFieldConverter, ITermKeyMappingInfo
     {
         /// <summary>
         /// Suffix of the hidden numeric doc-values field written for range
@@ -420,6 +421,78 @@ namespace Lucene.Net.Linq.Mapping
         private string EvaluateExpressionToStringAndAnalyze(object value)
         {
             return analyzer.Analyze(FieldName, ConvertToQueryExpression(value));
+        }
+
+        string ITermKeyMappingInfo.ConvertToTermText(object value) => ConvertToTermText(value);
+
+        object ITermKeyMappingInfo.ConvertToSortKey(object value)
+        {
+            return docValues || !(value is string) ? value : ConvertToTermText(value) ?? value;
+        }
+
+        JoinTermForm ITermKeyMappingInfo.JoinTermForm => JoinTermForm;
+
+        /// <summary>
+        /// A plain string property indexed as one term per document can be the
+        /// key of a join executed inside Lucene.
+        /// </summary>
+        internal virtual JoinTermForm JoinTermForm
+        {
+            get
+            {
+                if (propertyInfo.PropertyType != typeof(string) || converter != null || index == IndexMode.NotIndexed)
+                {
+                    return JoinTermForm.None;
+                }
+
+                if (index == IndexMode.NotAnalyzed || index == IndexMode.NotAnalyzedNoNorms)
+                {
+                    return JoinTermForm.Exact;
+                }
+
+                var fieldAnalyzer = analyzer is PerFieldAnalyzer perField ? perField[fieldName] : analyzer;
+
+                // Exact type checks: a subclass could tokenize differently.
+                if (fieldAnalyzer != null && fieldAnalyzer.GetType() == typeof(Lucene.Net.Analysis.Core.KeywordAnalyzer))
+                {
+                    return JoinTermForm.Exact;
+                }
+
+                if (fieldAnalyzer != null && fieldAnalyzer.GetType() == typeof(CaseInsensitiveKeywordAnalyzer))
+                {
+                    // The join reads the "from" side's terms through FieldCache,
+                    // which prefers the doc-values column, and that column holds
+                    // the original casing rather than the lowercased term.
+                    return docValues ? JoinTermForm.None : JoinTermForm.Lowercase;
+                }
+
+                return JoinTermForm.None;
+            }
+        }
+
+        /// <summary>
+        /// The single term <paramref name="value"/> is indexed as, or <c>null</c>
+        /// when it has no single-term form (not indexed, not convertible, or the
+        /// analyzer produces zero or several tokens).
+        /// </summary>
+        internal virtual string ConvertToTermText(object value)
+        {
+            if (value == null || index == IndexMode.NotIndexed) return null;
+            if (converter == null && !(value is string)) return null;
+
+            var text = ConvertToQueryExpression(value);
+            if (text == null) return null;
+
+            // Untokenized fields are indexed verbatim, whatever the analyzer.
+            if (index == IndexMode.NotAnalyzed || index == IndexMode.NotAnalyzedNoNorms) return text;
+
+            string term = null;
+            foreach (var token in analyzer.GetTerms(FieldName, text))
+            {
+                if (term != null) return null;
+                term = token;
+            }
+            return term;
         }
 
         protected internal virtual object ConvertFieldValue(IIndexableField field)

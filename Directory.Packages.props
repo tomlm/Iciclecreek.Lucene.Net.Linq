@@ -9,6 +9,7 @@
     <PackageVersion Include="Lucene.Net" Version="4.8.0-beta00018" />
     <PackageVersion Include="Lucene.Net.Analysis.Common" Version="4.8.0-beta00018" />
     <PackageVersion Include="Lucene.Net.Facet" Version="4.8.0-beta00018" />
+    <PackageVersion Include="Lucene.Net.Join" Version="4.8.0-beta00018" />
     <PackageVersion Include="Lucene.Net.Queries" Version="4.8.0-beta00018" />
     <PackageVersion Include="Lucene.Net.QueryParser" Version="4.8.0-beta00018" />
     <PackageVersion Include="Remotion.Linq" Version="2.2.0" />

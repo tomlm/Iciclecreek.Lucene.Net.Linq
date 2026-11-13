@@ -1,3 +1,36 @@
+# Unreleased: joins inside Lucene
+
+LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinUtil.CreateJoinQuery`) where the query's shape allows it. See the README's *Joins* section.
+
+**Behaviour changes for all queries, to match LINQ**
+- A later `OrderBy` is now the primary sort and an earlier one only breaks ties. Before, the first `OrderBy` was the primary sort, so `query.OrderBy(a).OrderBy(b)` sorted by `a` then `b`. `ThenBy` and `orderby a, b` are unchanged. This also applies when an ordered sub-query is ordered again.
+- A `Where` or `OrderBy` after `Take`/`Skip` (`query.Take(10).Where(...)`) is now applied to the page. Before, it was folded into the same Lucene query and ran ahead of the paging. It is evaluated on the loaded rows, so string comparisons there are exact, and strings are ordered by ordinal, as Lucene orders them. `ids.Contains(d.Id)` over an in-memory collection works there. Whatever follows is applied to those rows too (`query.Take(10).Where(...).Take(3).Select(...)` threw).
+- `Sum`, `Average`, `Distinct`, `Contains(item)`, `All` and `Aggregate` now work, on the loaded rows, also after a `Select` and with a clause after them (`query.Select(...).Distinct().OrderBy(...)`). Before, they threw `NullReferenceException` or (for `Distinct`) returned duplicates.
+- `DefaultIfEmpty` is now applied. Before, it was ignored.
+- `Min` and `Max` after `Take`/`Skip` now answer for the page, with or without a selector. Before, they ignored the paging.
+- `First()` / `FirstOrDefault()` after paging that leaves no rows (`query.Take(0)`, `query.Take(2).Skip(3)`) now finds no row, for queries with or without a join. Before, it returned the first match.
+
+**Behaviour changes (bug fixes) to existing joins**
+- A `where` or `orderby` after a join that refers to the joined source now works when the join runs in memory, as does a `Where` or `Count(predicate)` after paging a join. A `where` on one joined source runs in that source's Lucene query and an `orderby` sorts strings as Lucene sorts the field, so the result is the same whether or not the join is pushed down. A `where` that compares two sources is applied to the joined rows as C# values.
+- `Skip`, `Take`, `First`/`Single` and other result operators now apply to the joined rows. Before, they applied to the outer query ahead of the join, so `Take(20)` could return fewer or more than 20 rows.
+- `Count()`, `Any()` and other scalars over a join are computed from the joined rows. Before, they ignored the join and answered for the outer side alone.
+- Join keys are looked up by the mapped field name and the term the value is indexed as. Before, the property name and `ToString()` were used, so a renamed field, a numeric or converted key, or a mixed-case key on a default (lowercased) field found no matches.
+- String keys are compared as their indexed terms, so a join follows the key fields' configuration: case-insensitive on default-mapped fields, exact on `CaseSensitive` / `NotAnalyzed` fields.
+- An inner sequence with its own operators (`join a in authors.Where(...)`) now works. Before, it threw `ArgumentException: must be reducible node`.
+- `Count()` after `Take` now honours the `Take`, for queries with or without a join. Before, `query.Take(2).Count()` returned the total number of matches. A `Skip` past the rows that were taken counts 0 (`query.Take(2).Skip(3).Count()` was negative).
+- `Last()` / `LastOrDefault()` after a `Skip` that passes the last match now finds no row, for queries with or without a join. Before, `query.Skip(n).Last()` returned the last match however large `n` was.
+
+**New**
+- A join whose result uses only one side runs inside Lucene: the unused side becomes a filter, its documents are never loaded, and sorting, paging, `Count` and `Any` run in the index. Either side can be the one returned. In a chained join each join is decided separately.
+- Joins that don't qualify are joined in memory as before, and the reason is logged at debug level. The README lists the conditions.
+- `LuceneDataProviderSettings.EnableJoinPushdown` (default `true`) turns this off.
+- A join whose result uses both sides is still joined in memory, but the outer side is first narrowed with a join filter, so only outer documents with a matching inner document are loaded and a filter on the inner side cuts the outer load. No unique key is needed for this.
+- Benchmarks (`JoinPushdownBenchmark`, net8.0 Release, 50,000 × 5,000 documents, median of 10 runs):
+  - One side selected, filter on the inner side, `OrderBy`, `Take(20)`: 7 ms pushed down against 376 ms in memory.
+  - Both sides selected, inner filter keeps 2%: 37 ms narrowed against 431 ms in memory.
+  - Both sides selected, no inner filter (everything joins): 414 ms narrowed against 394 ms in memory.
+- New dependency: `Lucene.Net.Join` (already present transitively through `Lucene.Net.Facet`).
+
 # Unreleased: facet counting
 
 Adds facet counting via `Lucene.Net.Facet` 4.8.0-beta00018 (sorted-set doc-values facets, no taxonomy index). See the README's *Facets* section.

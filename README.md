@@ -33,7 +33,8 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 - **Multi-targeting**: the library builds for `netstandard2.0`, `net8.0`,
   and `net10.0`; 
 - **Polymorphic select** - searching for a base type always properly instantiated object types of the original type.
-- **JOIN** LINQ join support utilizes search index to query across document types 
+- **JOIN** LINQ join support utilizes search index to query across document types;
+  joins whose result uses one side run inside Lucene (`Lucene.Net.Join`)
 - **Facet counting** via `.Facets(...)`. Value counts (including on
   collection properties) and numeric/date range counts, collected in the
   same search pass as the results. See [Facets](#facets).
@@ -59,7 +60,7 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 * Prefix queries
 * Range queries and numeric range queries
 * Complex boolean queries
-* **LINQ joins** across document types with automatic semi-join pushdown via `TermsFilter`
+* **LINQ joins** across document types, run inside Lucene as query-time joins when the result uses one side, otherwise joined in memory with semi-join pushdown via `TermsFilter`
 * **`collection.Contains(field)`** — the LINQ "IN" pattern translates to an efficient `TermsFilter`
 * Native pagination using Skip and Take
 * **Facet counts** via `.Facets(...)`: per-value counts and numeric/date range buckets for any query
@@ -349,10 +350,11 @@ An empty collection matches nothing (returns zero results).
 
 ### Joins
 
-LINQ `join` syntax works across document types. The library materializes
-both sides via separate Lucene searches and joins them in memory. A
-semi-join optimization uses `TermsFilter` to push the outer key values
-into the inner query, so only matching inner documents are fetched.
+LINQ `join` syntax works across document types. A join whose result
+uses only one of its two sides runs inside Lucene as a query-time join
+(`Lucene.Net.Join`); other joins load both sides and are joined in
+memory. Both give the same rows, with normal LINQ semantics: `Skip`,
+`Take`, `First`, `Count` and `Any` apply to the joined rows.
 
 ```csharp
 var articles = provider.AsQueryable<Article>();
@@ -401,18 +403,146 @@ var results = provider.AsQueryable<Article>()
     .ToList();
 ```
 
-**How it works under the hood:**
+The inner side can have its own filter:
+
+```csharp
+var results = (
+    from article in articles
+    join author in authors.Where(a => a.Country == "DE") on article.AuthorId equals author.Username
+    select article
+).Take(20).ToList();
+```
+
+**Keys follow the field's configuration.** Keys are compared as the
+terms they are indexed as, the same way a `Where` on the field matches.
+A default-mapped string key (`[Field]`) is lowercased, so `"Alice"`
+joins `"alice"`; a `CaseSensitive` or `NotAnalyzed` key joins exactly.
+
+#### Joins that run inside Lucene
+
+When the select, ordering and paging mention only one side, the other
+side is never loaded. It becomes a filter built with
+`JoinUtil.CreateJoinQuery`, and sorting, `Skip`/`Take`, `Count` and
+`Any` run in the index:
+
+```csharp
+// Only articles are returned; authors only decide which ones.
+from article in articles
+join author in authors on article.AuthorId equals author.Username
+orderby article.Published descending
+select article                      // .Take(20), .Count(), .Any() …
+
+// Only the inner side is returned; the query runs on it.
+from author in authors.Where(a => a.Country == "DE")
+join article in articles on author.Username equals article.AuthorId
+select article
+```
+
+In a chained join, each join is decided on its own: joins whose inner
+side the result doesn't use become filters, and the rest are joined in
+memory.
+
+A join runs inside Lucene only when all of these hold; otherwise it is
+joined in memory and the reason is logged at debug level
+(`Join pushdown skipped: …`):
+
+- **Keys:** both keys are a plain mapped string property (`a.AuthorId`),
+  not composite or computed, and not numeric, converted or a collection.
+- **One term per document:** each key field is `NotAnalyzed`, or uses the
+  default keyword analyzers. A field whose analyzer can produce several
+  terms doesn't qualify, nor does a lowercased key with
+  `DocValues = true` (the column keeps the original casing).
+- **Same form:** both key fields are case-sensitive, or both are not.
+- **Unique key on the unused side:** the unused side's key is that type's
+  only `Key` property, so no row would repeat. A lone `Any()` doesn't
+  need this. If duplicates were added with `KeyConstraint.None`, a row
+  appears once instead of once per duplicate.
+- **Same provider:** both sides come from the same `LuceneDataProvider`.
+- **Plain unused side:** the unused side is only filtered: no
+  `Take`/`Skip`, no projection, no joins of its own. An `OrderBy` on it
+  is ignored, since it can't affect the rows.
+- **Outer source not paged:** the outer source has no `Skip`/`Take` of
+  its own ahead of the join (`articles.Take(10).Join(...)`), because
+  that paging has to happen before the join.
+- **No vector clause:** neither side uses `.Similar(...)`, which picks
+  its nearest neighbours before any filter applies.
+- **Unordered sides when the inner side is returned:** neither the outer
+  side nor the inner sequence is ordered ahead of the join, and the
+  query doesn't order by score. In a LINQ join the rows follow the
+  outer side's order, which a query on the inner side can't reproduce.
+- **Inner join:** group joins and outer joins (`into` … `DefaultIfEmpty`)
+  are not supported by either path.
+
+The first join on a key field reads that field's terms into Lucene's
+`FieldCache` (per segment, kept until the searcher reloads). A
+case-sensitive key with `DocValues = true` skips that cost.
+
+Both paths return the same rows, in the same order where the query
+orders them. A `where` on one side runs in that side's Lucene query on
+either path, and an `orderby` sorts strings the way Lucene sorts the
+field (ordinal, by the indexed term) on either path. Two things are
+left open:
+
+- When a query pages without an `OrderBy`, which rows it gets is
+  unspecified and can differ between the paths.
+- Rows that tie on every `orderby` key can come in a different order,
+  so add a unique key to the `orderby` when paging depends on it.
+
+Set `provider.Settings.EnableJoinPushdown = false` to always join in
+memory.
+
+#### Joins in memory
+
+A join whose result uses both sides has to build its rows in memory,
+because a Lucene join returns documents from one side only. When the
+keys qualify (the first three conditions above and the same provider),
+the outer side is first narrowed with the same kind of join filter, so
+only outer documents that have a matching inner document are loaded. A
+filter on the inner side therefore cuts the outer load too:
+
+```csharp
+// Only articles by German authors are loaded, then paired with their authors.
+from article in articles
+join author in authors.Where(a => a.Country == "DE") on article.AuthorId equals author.Username
+select new { article.Title, author.DisplayName }
+```
+
+Narrowing needs no unique key. It is skipped when the inner sequence
+has its own `Take`/`Skip`, the outer source is paged ahead of the join,
+or either side has a `.Similar(...)` clause. It pays off when
+the inner side rules out much of the outer side; when nearly every
+outer document joins, it adds a small cost and removes nothing.
+
+The join itself then runs as follows:
 
 1. The outer query executes as a normal Lucene search.
 2. Distinct join key values are extracted from the outer results.
 3. A `TermsFilter` is built from those keys and pushed into the inner
    query -- only inner documents matching an outer key are fetched.
-4. Both materialized sides are joined in memory via `Enumerable.Join`.
+4. Both materialized sides are joined in memory via `Enumerable.Join`,
+   and paging and scalar operators are applied to the joined rows.
 
-This means joins are efficient when the outer result set is selective
-(few distinct keys), but will materialize both sides for broad queries.
-Lucene has no relational join engine -- this is a convenience that
-avoids manual materialization and in-memory joining in user code.
+This is efficient when the outer result set is selective (few distinct
+keys), but loads both sides for broad queries that can't be narrowed.
+
+A `where` written after the join that reads one joined source
+(`where author.Country == "DE"`) is added to that source's own Lucene
+query. It means what a `Where` on that field means anywhere else (it
+follows the field's analyzer and case handling) and has to be something
+Lucene can translate, and less of that side is loaded.
+
+A `where` that compares two sources (`where article.Nick == author.Nick`)
+can't run in a single Lucene query. It is applied to the joined rows and
+compares values the way C# does (see [LINQ semantics](#linq-semantics)).
+Such a query uses both sides, so it is joined in memory whatever the
+setting and gives the same rows. The same applies to a `where` on a
+joined source that is a local collection, has a projection, or has its
+own `Take`/`Skip`.
+
+An `orderby` that refers to a joined source is applied to the joined
+rows. Strings are ordered as Lucene sorts that field: by ordinal, on the
+indexed term (so a default, lowercased field sorts case-insensitively),
+or on the value as written when the field has `DocValues`.
 
 ### Parsed string queries
 
@@ -476,6 +606,44 @@ returned object.
 the entire result set up to `n + m` and returns the requested slice,
 so very large `Skip` values are slower than a key-set / cursor
 approach — prefer cursoring on a sortable key field for deep paging.
+
+### LINQ semantics
+
+Queries give the results LINQ defines. Where Lucene can't produce them
+in one search, the library runs what it can in Lucene and applies the
+rest to the rows it loaded:
+
+- **Ordering:** a later `OrderBy` is the primary sort and an earlier one
+  only breaks ties, as in LINQ. Use `ThenBy` (or `orderby a, b`) for
+  secondary keys.
+- **Clauses after paging:** in `query.Take(10).Where(...)` or
+  `query.Skip(5).OrderBy(...)`, the page is read from Lucene first and
+  the `Where` or `OrderBy` is applied to it, along with whatever is
+  written after that (`query.Take(10).Where(...).Take(3).Select(...)`).
+  The same holds when the paged source is a join. A `Select` or more
+  paging directly after a page still runs in Lucene.
+- **Operators Lucene doesn't implement:** `Sum`, `Average`, `Distinct`,
+  `Contains(item)`, `All`, `Aggregate`, `DefaultIfEmpty` and `Cast` run
+  on the rows of the query up to that point, and so do `Min` and `Max`
+  (with or without a selector) when they follow a `Skip` or `Take`.
+  Anything written after them is applied to their result
+  (`query.Select(...).Distinct().OrderBy(...)`). These load every row
+  they need, so filter first.
+- **Counting and paging:** `Count()` honours an earlier `Take`,
+  `Last()` after a `Skip` past the end finds no row, and neither does
+  `First()` after paging that leaves none (`Take(2).Skip(3)`).
+
+A clause applied to loaded rows compares values the way C# does:
+
+- A `Where` on a string there is exact and case-sensitive, where the
+  same `Where` run by Lucene follows the field's analyzer.
+- `ids.Contains(d.Id)` and `d.Tags.Any(...)` work there when the
+  collection is in memory. A sub-query over another Lucene query
+  throws `NotSupportedException`.
+- An `OrderBy` there orders strings by ordinal, as Lucene does, not by
+  the current culture as LINQ to Objects does. When the key is a mapped
+  property of the documents, it is ordered as Lucene sorts that field
+  (by the indexed term, so a lowercased field sorts case-insensitively).
 
 ### Sorting and DocValues
 
