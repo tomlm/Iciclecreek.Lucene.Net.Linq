@@ -13,11 +13,12 @@ LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinU
 - A join whose result uses only one side runs inside Lucene: the unused side becomes a filter, its documents are never loaded, and sorting, paging, `Count` and `Any` run in the index. Either side can be the one returned. In a chained join each join is decided separately.
 - Joins that don't qualify are joined in memory as before, and the reason is logged at debug level. The README lists the conditions.
 - `LuceneDataProviderSettings.EnableJoinPushdown` (default `true`) turns this off.
-- On a 50,000 × 5,000 document join with a filter on the inner side, `OrderBy` and `Take(20)`, the pushed-down query took 11 ms against 389 ms in memory (`JoinPushdownBenchmark`, net8.0 Release).
+- A join whose result uses both sides is still joined in memory, but the outer side is first narrowed with a join filter, so only outer documents with a matching inner document are loaded and a filter on the inner side cuts the outer load. No unique key is needed for this.
+- Benchmarks (`JoinPushdownBenchmark`, net8.0 Release, 50,000 × 5,000 documents, median of 10 runs):
+  - One side selected, filter on the inner side, `OrderBy`, `Take(20)`: 7 ms pushed down against 376 ms in memory.
+  - Both sides selected, inner filter keeps 2%: 37 ms narrowed against 431 ms in memory.
+  - Both sides selected, no inner filter (everything joins): 414 ms narrowed against 394 ms in memory.
 - New dependency: `Lucene.Net.Join` (already present transitively through `Lucene.Net.Facet`).
-
-**Not yet done**
-- Joins whose result uses both sides still load both sides in memory (planned: narrow each side with a join filter first).
 
 # Unreleased: facet counting
 

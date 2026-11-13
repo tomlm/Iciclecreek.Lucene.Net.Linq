@@ -338,6 +338,93 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(trace, Has.Some.Contains("uses both sides"));
         }
 
+        // ---- results that use both sides ----------------------------------------
+
+        [Test]
+        public void BothSidesUsed_InnerFilterNarrowsTheOuterLoad()
+        {
+            var outerHits = -1;
+
+            Func<List<string>> query = () => (from s in Stories.CaptureStatistics(stats => outerHits = stats.TotalHits)
+                                              join w in Writers.Where(w => w.Country == "DE") on s.WriterId equals w.Username
+                                              select new { s.StoryId, w.Username }).ToList().Select(r => r.StoryId + ":" + r.Username).ToList();
+
+            var rows = BothPaths(query, "narrowed");
+
+            Assert.That(rows, Is.EquivalentTo(new[] { "s1:alice", "s3:alice" }));
+
+            provider.Settings.EnableJoinPushdown = false;
+            query();
+            Assert.That(outerHits, Is.EqualTo(5), "in memory, every story is loaded");
+
+            provider.Settings.EnableJoinPushdown = true;
+            query();
+            Assert.That(outerHits, Is.EqualTo(2), "narrowed, only stories by German writers are loaded");
+        }
+
+        [Test]
+        public void BothSidesUsed_OneToMany_RowsRepeat()
+        {
+            var rows = BothPaths(() => (from w in Writers
+                                        join s in Stories on w.Username equals s.WriterId
+                                        select new { w.Username, s.StoryId }).ToList().Select(r => r.Username + ":" + r.StoryId).ToList(), "narrowed");
+
+            Assert.That(rows, Is.EquivalentTo(new[] { "alice:s1", "alice:s3", "bob:s2", "bob:s5" }));
+        }
+
+        [Test]
+        public void BothSidesUsed_PagingAndOrder()
+        {
+            var rows = BothPaths(() => (from s in Stories
+                                        join w in Writers on s.WriterId equals w.Username
+                                        orderby s.Rank descending
+                                        select new { s.StoryId, w.Country }).Skip(1).Take(2).ToList().Select(r => r.StoryId + ":" + r.Country).ToList(),
+                "narrowed", ordered: true);
+
+            Assert.That(rows, Is.EqualTo(new[] { "s2:US", "s3:DE" }));
+        }
+
+        [Test]
+        public void BothSidesUsed_ThreeWay_NarrowsByEachJoin()
+        {
+            var outerHits = -1;
+
+            var rows = BothPaths(() => (from s in Stories.CaptureStatistics(stats => outerHits = stats.TotalHits)
+                                        join w in Writers on s.WriterId equals w.Username
+                                        join c in Sections on s.InSection equals c.SectionId
+                                        select new { s.StoryId, w.Country, c.Label }).ToList()
+                .Select(r => r.StoryId + ":" + r.Country + ":" + r.Label).ToList(), "narrowed");
+
+            Assert.That(rows, Is.EquivalentTo(new[] { "s1:DE:Technology", "s2:US:Lifestyle", "s3:DE:Lifestyle" }));
+
+            (from s in Stories.CaptureStatistics(stats => outerHits = stats.TotalHits)
+             join w in Writers on s.WriterId equals w.Username
+             join c in Sections on s.InSection equals c.SectionId
+             select new { s.StoryId, w.Country, c.Label }).ToList();
+
+            Assert.That(outerHits, Is.EqualTo(3), "s4 has no writer and s5 has no section");
+        }
+
+        [Test]
+        public void BothSidesUsed_NotNarrowedWhenKeysDoNotQualify()
+        {
+            trace.Clear();
+
+            (from s in Stories join w in Writers on s.WriterNumber equals w.Number select new { s.StoryId, w.Country }).ToList();
+
+            Assert.That(trace, Has.None.Contains("narrowed"));
+        }
+
+        [Test]
+        public void BothSidesUsed_NotNarrowedWhenInnerSequenceIsPaged()
+        {
+            var count = BothPaths(() => (from s in Stories join w in Writers.Take(2) on s.WriterId equals w.Username select new { s.StoryId, w.Country }).ToList().Count,
+                "result operators");
+
+            Assert.That(trace, Has.None.Contains("narrowed"));
+            Assert.That(count, Is.GreaterThan(0));
+        }
+
         // ---- reload -------------------------------------------------------------
 
         [Test]

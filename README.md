@@ -474,6 +474,27 @@ memory.
 
 #### Joins in memory
 
+A join whose result uses both sides has to build its rows in memory,
+because a Lucene join returns documents from one side only. When the
+keys qualify (the first three conditions above and the same provider),
+the outer side is first narrowed with the same kind of join filter, so
+only outer documents that have a matching inner document are loaded. A
+filter on the inner side therefore cuts the outer load too:
+
+```csharp
+// Only articles by German authors are loaded, then paired with their authors.
+from article in articles
+join author in authors.Where(a => a.Country == "DE") on article.AuthorId equals author.Username
+select new { article.Title, author.DisplayName }
+```
+
+Narrowing needs no unique key. It is skipped when the inner sequence
+has its own `Take`/`Skip` or a `.Similar(...)` clause. It pays off when
+the inner side rules out much of the outer side; when nearly every
+outer document joins, it adds a small cost and removes nothing.
+
+The join itself then runs as follows:
+
 1. The outer query executes as a normal Lucene search.
 2. Distinct join key values are extracted from the outer results.
 3. A `TermsFilter` is built from those keys and pushed into the inner
@@ -482,7 +503,7 @@ memory.
    and paging and scalar operators are applied to the joined rows.
 
 This is efficient when the outer result set is selective (few distinct
-keys), but loads both sides for broad queries. A `where` or `orderby`
+keys), but loads both sides for broad queries that can't be narrowed. A `where` or `orderby`
 placed after the join that refers to the inner side is only supported
 when the join runs inside Lucene.
 

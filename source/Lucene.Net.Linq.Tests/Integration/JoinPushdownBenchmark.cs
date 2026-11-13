@@ -80,6 +80,52 @@ namespace Lucene.Net.Linq.Tests.Integration
             }
         }
 
+        [Test]
+        public void BothSidesUsed()
+        {
+            using (var directory = new RAMDirectory())
+            using (var provider = new LuceneDataProvider(directory, LuceneVersion.LUCENE_48))
+            {
+                using (var session = provider.OpenSession<BenchWriter>())
+                {
+                    session.Add(Enumerable.Range(0, WriterCount)
+                        .Select(i => new BenchWriter { Username = "w" + i, Country = i % 50 == 0 ? "DE" : "US" }).ToArray());
+                    session.Commit();
+                }
+
+                using (var session = provider.OpenSession<BenchStory>())
+                {
+                    session.Add(Enumerable.Range(0, StoryCount)
+                        .Select(i => new BenchStory { StoryId = "s" + i, WriterId = "w" + (i % WriterCount), Rank = i }).ToArray());
+                    session.Commit();
+                }
+
+                // 2% of writers are German: the inner filter rules out most stories.
+                Func<string[]> selective = () =>
+                    (from s in provider.AsQueryable<BenchStory>()
+                     join w in provider.AsQueryable<BenchWriter>().Where(w => w.Country == "DE") on s.WriterId equals w.Username
+                     select new { s.StoryId, w.Country }).ToArray().Select(r => r.StoryId).OrderBy(x => x).ToArray();
+
+                // No inner filter: every story joins, so narrowing cannot remove anything.
+                Func<string[]> unselective = () =>
+                    (from s in provider.AsQueryable<BenchStory>()
+                     join w in provider.AsQueryable<BenchWriter>() on s.WriterId equals w.Username
+                     select new { s.StoryId, w.Country }).ToArray().Select(r => r.StoryId).OrderBy(x => x).ToArray();
+
+                foreach (var pair in new[] { Tuple.Create("inner filter keeps 2%", selective), Tuple.Create("no inner filter", unselective) })
+                {
+                    var narrowed = Measure(provider, true, pair.Item2, out var narrowedRows);
+                    var inMemory = Measure(provider, false, pair.Item2, out var inMemoryRows);
+
+                    Assert.That(narrowedRows, Is.EqualTo(inMemoryRows));
+
+                    Console.WriteLine("both sides selected, {0}: {1} rows, median of {2} runs", pair.Item1, narrowedRows.Length, Iterations);
+                    Console.WriteLine("  outer side narrowed: {0:F1} ms", narrowed);
+                    Console.WriteLine("  joined in memory:    {0:F1} ms", inMemory);
+                }
+            }
+        }
+
         private static double Measure(LuceneDataProvider provider, bool pushdown, Func<string[]> query, out string[] rows)
         {
             provider.Settings.EnableJoinPushdown = pushdown;

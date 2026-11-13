@@ -42,7 +42,10 @@ namespace Lucene.Net.Linq.Translation
     /// </para>
     /// <para>
     /// Joins that don't qualify are left in the query model for the in-memory
-    /// join, and the reason is logged at debug level.
+    /// join, and the reason is logged at debug level. When only the shape of
+    /// the result rules a join out (it uses both sides, or a row could
+    /// repeat), a <see cref="JoinFilterClause"/> is still added in front of
+    /// it, so the outer side is loaded only where the inner side matches.
     /// </para>
     /// </summary>
     internal sealed class JoinPushdownPlanner
@@ -213,6 +216,31 @@ namespace Lucene.Net.Linq.Translation
                 return false;
             }
 
+            if (TryReplaceJoin(queryModel, join, joinIndex, joinCount, inner, innerModel, outerKey, innerKey,
+                joinUsed, mainUsedAfter, rowsAreRead, multiplicityMatters, out delegation, out reason))
+            {
+                return true;
+            }
+
+            // The join itself has to run in memory, but the keys qualify, so the
+            // outer side can still be cut down to the documents that will join.
+            if (TryNarrowOuterSide(queryModel, join, inner, outerKey, innerKey))
+            {
+                reason += "; narrowed: " + self.MappedType.Name + " is loaded only where " + inner.MappedType.Name + " matches";
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Replaces the join with a filter when the result uses one side only.
+        /// </summary>
+        private bool TryReplaceJoin(QueryModel queryModel, JoinClause join, int joinIndex, int joinCount, IJoinSource inner, QueryModel innerModel,
+            ITermKeyMappingInfo outerKey, ITermKeyMappingInfo innerKey, bool joinUsed, bool mainUsedAfter, bool rowsAreRead, bool multiplicityMatters,
+            out Delegation delegation, out string reason)
+        {
+            delegation = null;
+
             if (!joinUsed)
             {
                 if (TryFilterOuterSide(queryModel, join, joinIndex, inner, innerModel, outerKey, innerKey, multiplicityMatters, out reason))
@@ -245,6 +273,33 @@ namespace Lucene.Net.Linq.Translation
             }
 
             return TryRunOnInnerSide(queryModel, join, joinIndex, inner, innerModel, outerKey, innerKey, rowsAreRead, multiplicityMatters, out delegation, out reason);
+        }
+
+        /// <summary>
+        /// Keeps the join for the in-memory path but adds a filter in front of
+        /// it, so only outer documents with a matching inner document are
+        /// loaded. An inner join drops the others anyway, so the rows are the
+        /// same whatever the keys' uniqueness; a filter on the inner side now
+        /// cuts the outer load too.
+        /// </summary>
+        private bool TryNarrowOuterSide(QueryModel queryModel, JoinClause join, IJoinSource inner, ITermKeyMappingInfo outerKey, ITermKeyMappingInfo innerKey)
+        {
+            // A private copy: earlier attempts may have translated the first one.
+            var innerModel = JoinInnerSequence.Resolve(join).QueryModel;
+
+            if (innerModel.BodyClauses.Any(c => !(c is WhereClause) && !(c is TrackRetrievedDocumentsClause) && !(c is OrderByClause)))
+            {
+                return false;
+            }
+
+            string ignored;
+            var fromQuery = PrepareFromQuery(inner, innerModel, out ignored);
+            if (fromQuery == null) return false;
+
+            queryModel.BodyClauses.Insert(queryModel.BodyClauses.IndexOf(join),
+                new JoinFilterClause(new JoinFilter(fromQuery, innerKey.FieldName, outerKey.FieldName)));
+
+            return true;
         }
 
         /// <summary>
