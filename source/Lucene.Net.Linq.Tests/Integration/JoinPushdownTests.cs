@@ -458,6 +458,52 @@ namespace Lucene.Net.Linq.Tests.Integration
             }
         }
 
+        [Test]
+        public void SessionQuery_TracksTheDocumentsItReturns()
+        {
+            // The outer side returned, then the inner side returned (pushed down,
+            // that query runs on the inner side's executor); each on both paths.
+            AssertTracked("outer-pushed", true, (stories, writers) => from s in stories.Query() join w in writers.Query() on s.WriterId equals w.Username select s);
+            AssertTracked("outer-memory", false, (stories, writers) => from s in stories.Query() join w in writers.Query() on s.WriterId equals w.Username select s);
+            AssertTracked("inner-pushed", true, (stories, writers) => from w in writers.Query() join s in stories.Query() on w.Username equals s.WriterId select s);
+            AssertTracked("inner-memory", false, (stories, writers) => from w in writers.Query() join s in stories.Query() on w.Username equals s.WriterId select s);
+        }
+
+        /// <summary>
+        /// A session writes back the documents it tracks when they have changed,
+        /// and hands out the same instance when a document is returned again.
+        /// </summary>
+        private void AssertTracked(string marker, bool pushdown, Func<ISession<Story>, ISession<Writer>, IQueryable<Story>> query)
+        {
+            provider.Settings.EnableJoinPushdown = pushdown;
+            trace.Clear();
+
+            try
+            {
+                using (var stories = provider.OpenSession<Story>())
+                using (var writers = provider.OpenSession<Writer>())
+                {
+                    var joined = query(stories, writers).ToList();
+
+                    Assert.That(trace, Has.Some.Contains(pushdown ? Pushed : "disabled"), marker);
+                    Assert.That(joined.Select(s => s.StoryId), Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }), marker);
+
+                    var again = stories.Query().Where(s => s.StoryId == "s1").ToList().Single();
+                    Assert.That(again, Is.SameAs(joined.Single(s => s.StoryId == "s1")), marker + ": same instance from the session");
+
+                    foreach (var story in joined) story.InSection = marker;
+                    stories.Commit();
+                }
+            }
+            finally
+            {
+                provider.Settings.EnableJoinPushdown = true;
+            }
+
+            Assert.That(Stories.Where(s => s.InSection == marker).ToList().Select(s => s.StoryId),
+                Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }), marker + ": changes written back");
+        }
+
         // ---- fallbacks ----------------------------------------------------------
 
         [Test]
@@ -532,11 +578,11 @@ namespace Lucene.Net.Linq.Tests.Integration
         public void Fallback_InnerSequenceHasResultOperators()
         {
             var ids = BothPaths(() => (from s in Stories
-                                       join w in Writers.OrderBy(x => x.Username).Take(2) on s.WriterId equals w.Username
+                                       join w in Writers.OrderBy(x => x.Username).Take(1) on s.WriterId equals w.Username
                                        select s.StoryId).ToList(), "result operators");
 
-            // alice and bob are the first two writers; carol has no stories anyway.
-            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+            // alice is the first writer; without the Take, bob's s2 and s5 would join too.
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s3" }));
             Assert.That(trace, Has.None.Contains("narrowed"));
         }
 
@@ -742,6 +788,44 @@ namespace Lucene.Net.Linq.Tests.Integration
                                        select s.StoryId).ToList(), "cannot run as a join filter");
 
             Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceHasAJoinOrSubQueryOfItsOwn()
+        {
+            const string reason = "joins or subqueries of its own";
+
+            // Only bob's stories are in a section that exists: s2 ("life").
+            var joined = BothPaths(() => (from w in Writers
+                                          join s in (from x in Stories join c in Sections on x.InSection equals c.SectionId where x.WriterId == "bob" select x)
+                                              on w.Username equals s.WriterId
+                                          select w.Username).ToList(), reason);
+
+            Assert.That(joined, Is.EquivalentTo(new[] { "bob" }));
+
+            var wanted = new[] { "alice", "carol" };
+
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers.Where(x => wanted.Contains(x.Username)) on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), reason);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s3" }));
+            Assert.That(trace, Has.None.Contains("narrowed"));
+        }
+
+        [Test]
+        public void Fallback_VectorClause_OnTheReturnedSide()
+        {
+            // A vector query takes its nearest neighbours before a join filter
+            // applies, so it must not be combined with one. Only the decision is
+            // under test: running the query needs a vector field and a model.
+            trace.Clear();
+            Assert.Catch(() => (from s in Stories.Where(x => x.Summary.Similar("cats")) join w in Writers on s.WriterId equals w.Username select s).Take(2).ToList());
+            Assert.That(trace, Is.EqualTo(new[] { "skipped: the query has a vector (Similar) clause" }));
+
+            trace.Clear();
+            Assert.Catch(() => (from w in Writers join s in Stories.Where(x => x.Summary.Similar("cats")) on w.Username equals s.WriterId select s).Take(2).ToList());
+            Assert.That(trace, Is.EqualTo(new[] { "skipped: the inner sequence has a vector (Similar) clause" }));
         }
 
         [Test]
