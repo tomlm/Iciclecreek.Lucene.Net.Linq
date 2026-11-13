@@ -267,15 +267,11 @@ namespace Lucene.Net.Linq.Tests.Integration
         [Test]
         public void InnerSideSelected_OrderedAndPagedInLucene()
         {
-            // The in-memory path cannot order by the inner side, so this is checked against literals.
-            trace.Clear();
+            var ids = BothPaths(() => (from w in Writers
+                                       join s in Stories on w.Username equals s.WriterId
+                                       orderby s.Rank
+                                       select s.StoryId).Take(2).ToList(), Pushed, ordered: true);
 
-            var ids = (from w in Writers
-                       join s in Stories on w.Username equals s.WriterId
-                       orderby s.Rank
-                       select s.StoryId).Take(2).ToList();
-
-            Assert.That(trace, Has.Some.Contains(Pushed));
             Assert.That(ids, Is.EqualTo(new[] { "s5", "s3" }));
         }
 
@@ -688,15 +684,15 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
-        public void Fallback_MinOrMaxAfterPaging()
+        public void MinOrMaxAfterPaging_AnswersForThePage()
         {
-            // Joined ranks are 5, 4, 3, 1. Lucene would sort by the value and
-            // answer for all rows (1 and 5), ignoring the page.
+            // Joined ranks are 5, 4, 3, 1. The join and the paging run in Lucene;
+            // the minimum or maximum is then taken from the page.
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank descending select s.Rank).Take(2).Min(),
-                "Min after Skip or Take only runs on rows in memory"), Is.EqualTo(4));
+                Pushed), Is.EqualTo(4));
 
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.Rank).Skip(1).Take(2).Max(),
-                "Max after Skip or Take only runs on rows in memory"), Is.EqualTo(4));
+                Pushed), Is.EqualTo(4));
 
             // On their own they run in Lucene.
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Min(), Pushed), Is.EqualTo(1));
@@ -723,16 +719,16 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
-        public void Fallback_ResultOperatorsThatOnlyRunInMemory()
+        public void ResultOperatorsLuceneDoesNotImplement_RunOnTheJoinedRows()
         {
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Sum(),
-                "Sum only runs on rows in memory"), Is.EqualTo(13));
+                Pushed), Is.EqualTo(13));
 
             Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).Contains("s4"),
-                "Contains only runs on rows in memory"), Is.False);
+                Pushed), Is.False);
 
             var sections = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.InSection).Distinct().ToList(),
-                "Distinct only runs on rows in memory");
+                Pushed);
 
             Assert.That(sections, Is.EquivalentTo(new[] { "tech", "life", "none" }));
         }
@@ -750,22 +746,20 @@ namespace Lucene.Net.Linq.Tests.Integration
         [Test]
         public void InnerSequenceOrdered_OrderByAfterTheJoinDecidesTheOrder()
         {
-            trace.Clear();
+            // An ordered inner sequence is joined in memory, where the orderby
+            // after the join is applied to the joined rows.
+            var ids = BothPaths(() => (from w in Writers
+                                       join s in Stories.OrderBy(x => x.StoryId) on w.Username equals s.WriterId
+                                       orderby s.Rank
+                                       select s.StoryId).ToList(), "inner sequence is ordered", ordered: true);
 
-            // The in-memory path cannot order by the inner side, so there is nothing to compare with.
-            var ids = (from w in Writers
-                       join s in Stories.OrderBy(x => x.StoryId) on w.Username equals s.WriterId
-                       orderby s.Rank
-                       select s.StoryId).ToList();
-
-            Assert.That(trace, Has.Some.Contains(Pushed));
             Assert.That(ids, Is.EqualTo(new[] { "s5", "s3", "s2", "s1" }), "by Rank, not by StoryId");
 
-            // The inner sequence's order still breaks ties: s3 and s2 are both in "life".
-            var tied = (from w in Writers
-                        join s in Stories.OrderByDescending(x => x.StoryId) on w.Username equals s.WriterId
-                        orderby s.InSection
-                        select s.StoryId).ToList();
+            // Ties keep the order of the join: s3 and s2 are both in "life".
+            var tied = BothPaths(() => (from w in Writers.OrderBy(x => x.Username)
+                                        join s in Stories.OrderByDescending(x => x.StoryId) on w.Username equals s.WriterId
+                                        orderby s.InSection
+                                        select s.StoryId).ToList(), "inner sequence is ordered", ordered: true);
 
             Assert.That(tied, Is.EqualTo(new[] { "s3", "s2", "s5", "s1" }));
         }
@@ -874,9 +868,46 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             provider.Settings.EnableJoinPushdown = false;
 
-            // Ordering by the inner side is not supported in memory; the error must not be wrapped.
-            Assert.That(() => (from w in Writers join s in Stories on w.Username equals s.WriterId orderby s.Rank select s.StoryId).ToList(),
+            // The outer query cannot be translated; the error must not be wrapped.
+            Assert.That(() => (from s in Stories.Where(x => x.StoryId.GetHashCode() == 1) join w in Writers on s.WriterId equals w.Username select s.StoryId).ToList(),
                 Throws.Exception.Not.InstanceOf<System.Reflection.TargetInvocationException>());
+        }
+
+        [Test]
+        public void WhereAndOrderByOnTheInnerSideAfterTheJoin()
+        {
+            // Both sides are used, so the join runs in memory on either path.
+            var rows = BothPaths(() => (from s in Stories
+                                        join w in Writers on s.WriterId equals w.Username
+                                        where w.Country == "DE"
+                                        orderby w.Username, s.Rank descending
+                                        select new { s.StoryId, w.Username }).ToList().Select(r => r.StoryId + ":" + r.Username).ToList(),
+                "uses both sides", ordered: true);
+
+            Assert.That(rows, Is.EqualTo(new[] { "s1:alice", "s3:alice" }));
+
+            // A later orderby on the outer side stays the primary one.
+            var ordered = BothPaths(() => (from s in Stories
+                                           join w in Writers on s.WriterId equals w.Username
+                                           orderby w.Country
+                                           orderby s.InSection
+                                           select new { s.StoryId, w.Country }).ToList().Select(r => r.StoryId).ToList(),
+                "uses both sides", ordered: true);
+
+            Assert.That(ordered, Is.EqualTo(new[] { "s3", "s2", "s5", "s1" }), "life (DE before US), none, tech");
+        }
+
+        [Test]
+        public void PredicateAfterPagingAJoin()
+        {
+            // Joined rows by Rank: s5(1), s3(3), s2(4), s1(5). The first two are s5 and s3.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s).Take(2).Count(s => s.Rank > 1), Pushed),
+                Is.EqualTo(1));
+
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s).Take(2)
+                .Where(s => s.Rank > 1).Select(s => s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EqualTo(new[] { "s3" }));
         }
 
         [Test]

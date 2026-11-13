@@ -393,15 +393,12 @@ namespace Lucene.Net.Linq.Translation
 
             var innerClauses = queryModel.BodyClauses.Skip(joinIndex + 1).ToList();
 
-            // Sort fields are added in clause order, so an ordering of the
-            // inner sequence must not stay ahead of the query's own. With an
-            // orderby after the join it is moved behind it, where it only
-            // breaks ties, as it would under LINQ's stable sort. Without one
-            // it would decide the order of the rows, where the outer side's
-            // order does in a LINQ join.
-            var innerOrderings = innerModel.BodyClauses.OfType<OrderByClause>().ToList();
-
-            if (innerOrderings.Count > 0 && !innerClauses.OfType<OrderByClause>().Any())
+            // In a LINQ join the rows follow the outer side's order, and the
+            // inner sequence's order only arranges the matches of one outer
+            // row. Run on the inner side's query, that order would instead
+            // arrange all the rows (or break all the ties of a later orderby),
+            // so an ordered inner sequence is joined in memory.
+            if (innerModel.BodyClauses.OfType<OrderByClause>().Any())
             {
                 reason = "the inner sequence is ordered";
                 return false;
@@ -444,8 +441,6 @@ namespace Lucene.Net.Linq.Translation
             toInner.AddMapping(join, new QuerySourceReferenceExpression(innerModel.MainFromClause));
             Func<Expression, Expression> rewrite = e => ReferenceReplacingExpressionVisitor.ReplaceClauseReferences(e, toInner, throwOnUnmappedReferences: false);
 
-            foreach (var ordering in innerOrderings) innerModel.BodyClauses.Remove(ordering);
-
             innerModel.BodyClauses.Add(new JoinFilterClause(new JoinFilter(fromQuery, outerKey.FieldName, innerKey.FieldName)));
 
             foreach (var clause in innerClauses)
@@ -453,8 +448,6 @@ namespace Lucene.Net.Linq.Translation
                 clause.TransformExpressions(rewrite);
                 innerModel.BodyClauses.Add(clause);
             }
-
-            foreach (var ordering in innerOrderings) innerModel.BodyClauses.Add(ordering);
 
             innerModel.SelectClause.Selector = rowsAreRead
                 ? rewrite(queryModel.SelectClause.Selector)

@@ -466,16 +466,10 @@ joined in memory and the reason is logged at debug level
   that paging has to happen before the join.
 - **No vector clause:** neither side uses `.Similar(...)`, which picks
   its nearest neighbours before any filter applies.
-- **Operators Lucene runs:** the query's result operators are among
-  `Skip`, `Take`, `First`, `Single`, `Last`, `Min`, `Max`, `Count`,
-  `LongCount` and `Any`. Others (`Sum`, `Average`, `Distinct`,
-  `Contains`, `All`...) are applied to the joined rows in memory, and so
-  is a `Min` or `Max` that follows a `Skip` or `Take`.
-- **Ordering when the inner side is returned:** the outer side is not
-  ordered and the query doesn't order by score. An `OrderBy` on the
-  inner sequence (`join a in articles.OrderBy(...)`) needs an `orderby`
-  after the join, which then decides the order; the inner sequence's
-  own order only breaks ties.
+- **Unordered sides when the inner side is returned:** neither the outer
+  side nor the inner sequence is ordered ahead of the join, and the
+  query doesn't order by score. In a LINQ join the rows follow the
+  outer side's order, which a query on the inner side can't reproduce.
 - **Inner join:** group joins and outer joins (`into` … `DefaultIfEmpty`)
   are not supported by either path.
 
@@ -522,9 +516,11 @@ The join itself then runs as follows:
    and paging and scalar operators are applied to the joined rows.
 
 This is efficient when the outer result set is selective (few distinct
-keys), but loads both sides for broad queries that can't be narrowed. A `where` or `orderby`
-placed after the join that refers to the inner side is only supported
-when the join runs inside Lucene.
+keys), but loads both sides for broad queries that can't be narrowed.
+
+A `where` or `orderby` written after the join that refers to a joined
+source is applied to the joined rows, with LINQ to Objects semantics
+(see [LINQ semantics](#linq-semantics)).
 
 ### Parsed string queries
 
@@ -588,6 +584,31 @@ returned object.
 the entire result set up to `n + m` and returns the requested slice,
 so very large `Skip` values are slower than a key-set / cursor
 approach — prefer cursoring on a sortable key field for deep paging.
+
+### LINQ semantics
+
+Queries give the results LINQ defines. Where Lucene can't produce them
+in one search, the library runs what it can in Lucene and applies the
+rest to the rows it loaded:
+
+- **Ordering:** a later `OrderBy` is the primary sort and an earlier one
+  only breaks ties, as in LINQ. Use `ThenBy` (or `orderby a, b`) for
+  secondary keys.
+- **Clauses after paging:** in `query.Take(10).Where(...)` or
+  `query.Skip(5).OrderBy(...)`, the page is read from Lucene first and
+  the `Where` or `OrderBy` is applied to it. The same holds when the
+  paged source is a join. A `Select` or more paging after a page still
+  runs in Lucene.
+- **Operators Lucene doesn't implement:** `Sum`, `Average`, `Distinct`,
+  `Contains(item)`, `All` and `Aggregate` run on the rows of the query
+  up to that point, and so do `Min` and `Max` when they follow a `Skip`
+  or `Take`. These load every row they need, so filter first.
+- **Counting and paging:** `Count()` honours an earlier `Take`, and
+  `Last()` after a `Skip` past the end finds no row.
+
+A clause applied to loaded rows compares values the way C# does. A
+`Where` on a string there is exact and case-sensitive, where the same
+`Where` run by Lucene follows the field's analyzer.
 
 ### Sorting and DocValues
 

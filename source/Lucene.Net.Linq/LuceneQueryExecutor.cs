@@ -126,6 +126,13 @@ namespace Lucene.Net.Linq
 
         public T ExecuteScalar<T>(QueryModel queryModel)
         {
+            // Parts of the query Lucene cannot run with LINQ's meaning are applied to loaded rows.
+            var inMemory = TryExecuteInMemory(queryModel);
+            if (inMemory != null)
+            {
+                return (T)((StreamedValue)inMemory).Value;
+            }
+
             // Joins whose result uses one side run inside Lucene; this may hand
             // the query to the inner side's executor.
             var delegation = new JoinPushdownPlanner(this, Log).Plan(queryModel);
@@ -213,6 +220,22 @@ namespace Lucene.Net.Linq
 
         public IEnumerable<T> ExecuteCollection<T>(QueryModel queryModel)
         {
+            // Parts of the query Lucene cannot run with LINQ's meaning are applied to loaded rows.
+            var inMemory = TryExecuteInMemory(queryModel);
+            if (inMemory != null)
+            {
+                if (inMemory is StreamedSequence rows)
+                {
+                    foreach (var item in rows.Sequence)
+                        yield return (T)item;
+                }
+                else
+                {
+                    yield return (T)((StreamedValue)inMemory).Value;
+                }
+                yield break;
+            }
+
             // Joins whose result uses one side run inside Lucene: the planner either
             // turns them into filters on this query or hands the query to the inner
             // side's executor. Joins it leaves in the model are joined in memory below.
@@ -327,6 +350,132 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
+        /// Runs the parts of a query that Lucene cannot run with LINQ's meaning
+        /// on rows that are already loaded, and returns the result; returns
+        /// <c>null</c> when the whole query can go to Lucene as it is.
+        /// <list type="bullet">
+        ///   <item>Result operators the Lucene path does not implement (Sum,
+        ///     Average, Distinct, Contains, All…), and Min/Max after paging:
+        ///     the query up to that operator runs normally and the rest is
+        ///     applied to its rows.</item>
+        ///   <item>A source that is itself a paged query or a join
+        ///     (<c>query.Take(10).Where(…)</c>, <c>(a join b).Take(10).Where(…)</c>):
+        ///     the source runs first and the clauses written after it are
+        ///     applied to its rows. Folding them into one Lucene query would
+        ///     filter or sort before paging, or lose the join.</item>
+        /// </list>
+        /// </summary>
+        private IStreamedData TryExecuteInMemory(QueryModel queryModel)
+        {
+            var operators = queryModel.ResultOperators;
+            var tailStart = InMemoryRows.FindInMemoryTail(operators);
+
+            if (tailStart >= 0)
+            {
+                var tail = operators.Skip(tailStart).ToList();
+                while (operators.Count > tailStart) operators.RemoveAt(operators.Count - 1);
+
+                // The override names the type of the whole query's result, which the shortened query no longer produces.
+                queryModel.ResultTypeOverride = null;
+
+                var info = (StreamedSequenceInfo)queryModel.GetOutputDataInfo();
+                IStreamedData data = (IStreamedData)InvokeGeneric(RunAsSequenceMethod, info.ResultItemType, queryModel, info);
+
+                foreach (var op in tail)
+                {
+                    data = op.ExecuteInMemory(data);
+                }
+
+                return data;
+            }
+
+            var subQuery = queryModel.MainFromClause.FromExpression as Remotion.Linq.Clauses.Expressions.SubQueryExpression;
+
+            if (subQuery == null) return null;
+
+            var clauses = queryModel.BodyClauses;
+            var onlyFiltersAndOrderings = clauses.All(c => c is WhereClause || c is OrderByClause);
+
+            if (ContainsJoin(subQuery.QueryModel))
+            {
+                if (!onlyFiltersAndOrderings)
+                {
+                    throw new NotSupportedException("Only where, orderby, select and result operators can follow a join that is used as a source: " + queryModel);
+                }
+            }
+            else if (!onlyFiltersAndOrderings || clauses.Count == 0 || !IsPaged(subQuery.QueryModel))
+            {
+                // A select or result operators after paging commute with it, and an
+                // unpaged source can be folded into this query without changing it.
+                return null;
+            }
+
+            var sourceInfo = (StreamedSequenceInfo)subQuery.QueryModel.GetOutputDataInfo();
+            var sourceRows = (StreamedSequence)InvokeGeneric(RunAsSequenceMethod, sourceInfo.ResultItemType, subQuery.QueryModel, sourceInfo);
+            var sources = new IQuerySource[] { queryModel.MainFromClause };
+
+            var filtered = InMemoryRows.Apply(sourceRows.Sequence.Cast<object>().Select(o => new[] { o }), clauses, sources);
+
+            var rowInfo = queryModel.SelectClause.GetOutputDataInfo();
+            IStreamedData result = (IStreamedData)InvokeGeneric(ProjectRowsMethod, rowInfo.ResultItemType,
+                filtered, queryModel.SelectClause.Selector, sources, rowInfo);
+
+            foreach (var op in operators)
+            {
+                result = op.ExecuteInMemory(result);
+            }
+
+            return result;
+        }
+
+        private static bool ContainsJoin(QueryModel model)
+        {
+            return model.BodyClauses.OfType<JoinClause>().Any()
+                || (model.MainFromClause.FromExpression is Remotion.Linq.Clauses.Expressions.SubQueryExpression nested && ContainsJoin(nested.QueryModel));
+        }
+
+        private static bool IsPaged(QueryModel model)
+        {
+            return model.ResultOperators.Any(o => o is Remotion.Linq.Clauses.ResultOperators.TakeResultOperator || o is Remotion.Linq.Clauses.ResultOperators.SkipResultOperator)
+                || (model.MainFromClause.FromExpression is Remotion.Linq.Clauses.Expressions.SubQueryExpression nested && IsPaged(nested.QueryModel));
+        }
+
+        private static readonly System.Reflection.MethodInfo RunAsSequenceMethod =
+            typeof(LuceneQueryExecutorBase<TDocument>).GetMethod(nameof(RunAsSequence),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        private static readonly System.Reflection.MethodInfo ProjectRowsMethod =
+            typeof(LuceneQueryExecutorBase<TDocument>).GetMethod(nameof(ProjectRows),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        private StreamedSequence RunAsSequence<T>(QueryModel queryModel, StreamedSequenceInfo info)
+        {
+            return new StreamedSequence(ExecuteCollection<T>(queryModel).AsQueryable(), info);
+        }
+
+        private StreamedSequence ProjectRows<T>(IEnumerable<object[]> rows, Expression selector, IList<IQuerySource> sources, StreamedSequenceInfo info)
+        {
+            return new StreamedSequence(rows.Select(InMemoryRows.Compile<T>(selector, sources)).AsQueryable(), info);
+        }
+
+        /// <summary>
+        /// Calls a generic method of this executor for a type only known at run
+        /// time, surfacing the method's own exception rather than the wrapper.
+        /// </summary>
+        private object InvokeGeneric(System.Reflection.MethodInfo method, Type typeArgument, params object[] arguments)
+        {
+            try
+            {
+                return method.MakeGenericMethod(typeArgument).Invoke(this, arguments);
+            }
+            catch (System.Reflection.TargetInvocationException e) when (e.InnerException != null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Runs a query that has join clauses and applies its result operators
         /// (Skip, Take, Count, Any, First…) to the joined rows, as LINQ defines
         /// them, rather than to the outer query before the join.
@@ -343,20 +492,7 @@ namespace Lucene.Net.Linq
             // result operators resolve their expressions against it.
             var rowInfo = queryModel.SelectClause.GetOutputDataInfo();
 
-            IStreamedData data;
-
-            try
-            {
-                data = (IStreamedData)ExecuteJoinedRowsMethod
-                    .MakeGenericMethod(rowInfo.ResultItemType)
-                    .Invoke(this, new object[] { queryModel, joinClauses, rowInfo });
-            }
-            catch (System.Reflection.TargetInvocationException e) when (e.InnerException != null)
-            {
-                // The join runs inside the reflective call; surface its own exception.
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-                throw;
-            }
+            var data = (IStreamedData)InvokeGeneric(ExecuteJoinedRowsMethod, rowInfo.ResultItemType, queryModel, joinClauses, rowInfo);
 
             foreach (var resultOperator in resultOperators)
             {
@@ -391,6 +527,29 @@ namespace Lucene.Net.Linq
             // Mapping providers for the main source and each joined source, used
             // to look keys up and compare them the way their fields are indexed.
             var keyProviders = new Dictionary<IQuerySource, IFieldMappingInfoProvider> { { mainFromClause, this } };
+
+            // A where or orderby written after the first join that mentions a joined
+            // source cannot go into the outer side's Lucene query; it is applied to
+            // the joined rows. Once one orderby is applied there, every later
+            // orderby is too, so that the last one written stays the primary one.
+            var rowSources = new List<IQuerySource> { mainFromClause };
+            rowSources.AddRange(joinClauses);
+
+            var joinedSources = new HashSet<IQuerySource>(joinClauses);
+            var rowClauses = new List<IBodyClause>();
+            var orderingRows = false;
+
+            foreach (var clause in queryModel.BodyClauses.Skip(queryModel.BodyClauses.IndexOf(joinClauses[0]) + 1).ToList())
+            {
+                if (!(clause is WhereClause) && !(clause is OrderByClause)) continue;
+
+                if (InMemoryRows.References(clause, joinedSources) || (clause is OrderByClause && orderingRows))
+                {
+                    rowClauses.Add(clause);
+                    queryModel.BodyClauses.Remove(clause);
+                    orderingRows |= clause is OrderByClause;
+                }
+            }
 
             // Strip join clauses so PrepareQuery only sees WHERE/ORDER/etc.
             foreach (var jc in joinClauses)
@@ -490,6 +649,8 @@ namespace Lucene.Net.Linq
                     innerKeySelector,
                     (tuple, inner) => tuple.Append(inner).ToArray());
             }
+
+            runningResults = InMemoryRows.Apply(runningResults, rowClauses, rowSources);
 
             // 3. Build the final result selector from the original SelectClause.
             //    Replace all source references with tuple element access.
