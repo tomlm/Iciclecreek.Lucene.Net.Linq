@@ -1,3 +1,24 @@
+# Unreleased: joins inside Lucene
+
+LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinUtil.CreateJoinQuery`) where the query's shape allows it. See the README's *Joins* section.
+
+**Behaviour changes (bug fixes) to existing joins**
+- `Skip`, `Take`, `First`/`Single` and other result operators now apply to the joined rows. Before, they applied to the outer query ahead of the join, so `Take(20)` could return fewer or more than 20 rows.
+- `Count()`, `Any()` and other scalars over a join are computed from the joined rows. Before, they ignored the join and answered for the outer side alone.
+- Join keys are looked up by the mapped field name and the term the value is indexed as. Before, the property name and `ToString()` were used, so a renamed field, a numeric or converted key, or a mixed-case key on a default (lowercased) field found no matches.
+- String keys are compared as their indexed terms, so a join follows the key fields' configuration: case-insensitive on default-mapped fields, exact on `CaseSensitive` / `NotAnalyzed` fields.
+- An inner sequence with its own operators (`join a in authors.Where(...)`) now works. Before, it threw `ArgumentException: must be reducible node`.
+
+**New**
+- A join whose result uses only one side runs inside Lucene: the unused side becomes a filter, its documents are never loaded, and sorting, paging, `Count` and `Any` run in the index. Either side can be the one returned. In a chained join each join is decided separately.
+- Joins that don't qualify are joined in memory as before, and the reason is logged at debug level. The README lists the conditions.
+- `LuceneDataProviderSettings.EnableJoinPushdown` (default `true`) turns this off.
+- On a 50,000 × 5,000 document join with a filter on the inner side, `OrderBy` and `Take(20)`, the pushed-down query took 11 ms against 389 ms in memory (`JoinPushdownBenchmark`, net8.0 Release).
+- New dependency: `Lucene.Net.Join` (already present transitively through `Lucene.Net.Facet`).
+
+**Not yet done**
+- Joins whose result uses both sides still load both sides in memory (planned: narrow each side with a join filter first).
+
 # Unreleased: facet counting
 
 Adds facet counting via `Lucene.Net.Facet` 4.8.0-beta00018 (sorted-set doc-values facets, no taxonomy index). See the README's *Facets* section.

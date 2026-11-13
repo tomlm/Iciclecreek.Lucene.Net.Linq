@@ -14,7 +14,24 @@ namespace Lucene.Net.Linq
         {
             DeletionPolicy = new KeepOnlyLastCommitDeletionPolicy();
             RAMBufferSizeMB = IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB;
+            EnableJoinPushdown = true;
         }
+
+        /// <summary>
+        /// When <c>true</c> (the default), a LINQ join whose result uses only one
+        /// of its two sides is executed inside Lucene as a query-time join
+        /// (<c>Lucene.Net.Join</c>), so the other side's documents are never
+        /// loaded and paging, sorting and counting run in the index. Joins that
+        /// don't qualify are joined in memory. Set to <c>false</c> to always
+        /// join in memory; results are the same either way.
+        /// </summary>
+        public bool EnableJoinPushdown { get; set; }
+
+        /// <summary>
+        /// Receives one message per join saying whether it was pushed into
+        /// Lucene or why it was not. For tests.
+        /// </summary>
+        internal Action<string> JoinPushdownTrace { get; set; }
 
         /// <summary>
         /// Specifies the <see cref="IndexDeletionPolicy"/> of the <see cref="IndexWriter"/>.

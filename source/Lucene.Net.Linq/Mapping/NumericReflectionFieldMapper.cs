@@ -247,6 +247,12 @@ namespace Lucene.Net.Linq.Mapping
         }
 
         /// <summary>
+        /// A numeric field indexes several trie terms per value, so it cannot
+        /// be the key of a join executed inside Lucene.
+        /// </summary>
+        internal override JoinTermForm JoinTermForm => JoinTermForm.None;
+
+        /// <summary>
         /// A numeric value is looked up by its full-precision trie term.
         /// </summary>
         internal override string ConvertToTermText(object value)

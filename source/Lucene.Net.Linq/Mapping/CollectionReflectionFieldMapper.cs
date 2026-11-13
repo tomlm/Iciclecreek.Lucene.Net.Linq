@@ -34,6 +34,8 @@ namespace Lucene.Net.Linq.Mapping
         /// </summary>
         internal override string ConvertToTermText(object value) => null;
 
+        internal override JoinTermForm JoinTermForm => JoinTermForm.None;
+
         public override IEnumerable<string> GetFacetValues(T source)
         {
             if (!facet) yield break;

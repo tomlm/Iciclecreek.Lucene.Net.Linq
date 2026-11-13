@@ -33,7 +33,8 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 - **Multi-targeting**: the library builds for `netstandard2.0`, `net8.0`,
   and `net10.0`; 
 - **Polymorphic select** - searching for a base type always properly instantiated object types of the original type.
-- **JOIN** LINQ join support utilizes search index to query across document types 
+- **JOIN** LINQ join support utilizes search index to query across document types;
+  joins whose result uses one side run inside Lucene (`Lucene.Net.Join`)
 - **Facet counting** via `.Facets(...)`. Value counts (including on
   collection properties) and numeric/date range counts, collected in the
   same search pass as the results. See [Facets](#facets).
@@ -59,7 +60,7 @@ multi-targeting `netstandard2.0;net8.0;net10.0`. Highlights:
 * Prefix queries
 * Range queries and numeric range queries
 * Complex boolean queries
-* **LINQ joins** across document types with automatic semi-join pushdown via `TermsFilter`
+* **LINQ joins** across document types, run inside Lucene as query-time joins when the result uses one side, otherwise joined in memory with semi-join pushdown via `TermsFilter`
 * **`collection.Contains(field)`** — the LINQ "IN" pattern translates to an efficient `TermsFilter`
 * Native pagination using Skip and Take
 * **Facet counts** via `.Facets(...)`: per-value counts and numeric/date range buckets for any query
@@ -349,10 +350,11 @@ An empty collection matches nothing (returns zero results).
 
 ### Joins
 
-LINQ `join` syntax works across document types. The library materializes
-both sides via separate Lucene searches and joins them in memory. A
-semi-join optimization uses `TermsFilter` to push the outer key values
-into the inner query, so only matching inner documents are fetched.
+LINQ `join` syntax works across document types. A join whose result
+uses only one of its two sides runs inside Lucene as a query-time join
+(`Lucene.Net.Join`); other joins load both sides and are joined in
+memory. Both give the same rows, with normal LINQ semantics: `Skip`,
+`Take`, `First`, `Count` and `Any` apply to the joined rows.
 
 ```csharp
 var articles = provider.AsQueryable<Article>();
@@ -401,18 +403,88 @@ var results = provider.AsQueryable<Article>()
     .ToList();
 ```
 
-**How it works under the hood:**
+The inner side can have its own filter:
+
+```csharp
+var results = (
+    from article in articles
+    join author in authors.Where(a => a.Country == "DE") on article.AuthorId equals author.Username
+    select article
+).Take(20).ToList();
+```
+
+**Keys follow the field's configuration.** Keys are compared as the
+terms they are indexed as, the same way a `Where` on the field matches.
+A default-mapped string key (`[Field]`) is lowercased, so `"Alice"`
+joins `"alice"`; a `CaseSensitive` or `NotAnalyzed` key joins exactly.
+
+#### Joins that run inside Lucene
+
+When the select, ordering and paging mention only one side, the other
+side is never loaded. It becomes a filter built with
+`JoinUtil.CreateJoinQuery`, and sorting, `Skip`/`Take`, `Count` and
+`Any` run in the index:
+
+```csharp
+// Only articles are returned; authors only decide which ones.
+from article in articles
+join author in authors on article.AuthorId equals author.Username
+orderby article.Published descending
+select article                      // .Take(20), .Count(), .Any() …
+
+// Only the inner side is returned; the query runs on it.
+from author in authors.Where(a => a.Country == "DE")
+join article in articles on author.Username equals article.AuthorId
+select article
+```
+
+In a chained join, each join is decided on its own: joins whose inner
+side the result doesn't use become filters, and the rest are joined in
+memory.
+
+A join runs inside Lucene only when all of these hold; otherwise it is
+joined in memory and the reason is logged at debug level
+(`Join pushdown skipped: …`):
+
+- **Keys:** both keys are a plain mapped string property (`a.AuthorId`),
+  not composite or computed, and not numeric, converted or a collection.
+- **One term per document:** each key field is `NotAnalyzed`, or uses the
+  default keyword analyzers. A field whose analyzer can produce several
+  terms doesn't qualify, nor does a lowercased key with
+  `DocValues = true` (the column keeps the original casing).
+- **Same form:** both key fields are case-sensitive, or both are not.
+- **Unique key on the unused side:** the unused side's key is that type's
+  only `Key` property, so no row would repeat. A lone `Any()` doesn't
+  need this. If duplicates were added with `KeyConstraint.None`, a row
+  appears once instead of once per duplicate.
+- **Same provider:** both sides come from the same `LuceneDataProvider`.
+- **Plain unused side:** the unused side has only `Where` clauses: no
+  `Take`/`Skip`, no `.Similar(...)`, no joins of its own.
+- **Unordered outer side:** when the inner side is the one returned, the
+  outer side isn't ordered and the query doesn't order by score.
+- **Inner join:** group joins and outer joins (`into` … `DefaultIfEmpty`)
+  are not supported by either path.
+
+The first join on a key field reads that field's terms into Lucene's
+`FieldCache` (per segment, kept until the searcher reloads). A
+case-sensitive key with `DocValues = true` skips that cost.
+
+Set `provider.Settings.EnableJoinPushdown = false` to always join in
+memory.
+
+#### Joins in memory
 
 1. The outer query executes as a normal Lucene search.
 2. Distinct join key values are extracted from the outer results.
 3. A `TermsFilter` is built from those keys and pushed into the inner
    query -- only inner documents matching an outer key are fetched.
-4. Both materialized sides are joined in memory via `Enumerable.Join`.
+4. Both materialized sides are joined in memory via `Enumerable.Join`,
+   and paging and scalar operators are applied to the joined rows.
 
-This means joins are efficient when the outer result set is selective
-(few distinct keys), but will materialize both sides for broad queries.
-Lucene has no relational join engine -- this is a convenience that
-avoids manual materialization and in-memory joining in user code.
+This is efficient when the outer result set is selective (few distinct
+keys), but loads both sides for broad queries. A `where` or `orderby`
+placed after the join that refers to the inner side is only supported
+when the join runs inside Lucene.
 
 ### Parsed string queries
 

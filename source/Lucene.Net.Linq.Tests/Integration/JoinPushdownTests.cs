@@ -1,0 +1,513 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Lucene.Net.Analysis.Standard;
+using Lucene.Net.Linq.Mapping;
+using Lucene.Net.Store;
+using Lucene.Net.Util;
+using NUnit.Framework;
+
+namespace Lucene.Net.Linq.Tests.Integration
+{
+    /// <summary>
+    /// Joins whose result uses one side run inside Lucene. Every test runs its
+    /// query with pushdown on and off and expects the same rows, and checks
+    /// which path was taken.
+    /// </summary>
+    [TestFixture]
+    public class JoinPushdownTests
+    {
+        public class Writer
+        {
+            [Field(IndexMode.NotAnalyzed, Key = true)]
+            public string Username { get; set; }
+
+            [Field(IndexMode.NotAnalyzed)]
+            public string Country { get; set; }
+
+            [Field]
+            public string Nick { get; set; }                       // default: lowercased
+
+            [Field(DocValues = true)]
+            public string NickWithDocValues { get; set; }          // lowercased term, original-case column
+
+            [Field(Analyzer = typeof(StandardAnalyzer))]
+            public string Bio { get; set; }                        // several terms
+
+            [NumericField]
+            public int Number { get; set; }
+        }
+
+        public class Story
+        {
+            [Field(IndexMode.NotAnalyzed, Key = true)]
+            public string StoryId { get; set; }
+
+            [Field(IndexMode.NotAnalyzed)]
+            public string WriterId { get; set; }
+
+            // Not named SectionId: a session replaces documents by key field and
+            // value, whatever their type, so Section's key must not match stories.
+            [Field(IndexMode.NotAnalyzed)]
+            public string InSection { get; set; }
+
+            [Field]
+            public string WriterNick { get; set; }                 // default: lowercased
+
+            [Field(Analyzer = typeof(StandardAnalyzer))]
+            public string Summary { get; set; }
+
+            [NumericField]
+            public int WriterNumber { get; set; }
+
+            [NumericField]
+            public int Rank { get; set; }
+        }
+
+        public class Section
+        {
+            [Field(IndexMode.NotAnalyzed, Key = true)]
+            public string SectionId { get; set; }
+
+            [Field(IndexMode.NotAnalyzed)]
+            public string Label { get; set; }
+        }
+
+        private RAMDirectory directory;
+        private LuceneDataProvider provider;
+        private List<string> trace;
+
+        private IQueryable<Writer> Writers => provider.AsQueryable<Writer>();
+        private IQueryable<Story> Stories => provider.AsQueryable<Story>();
+        private IQueryable<Section> Sections => provider.AsQueryable<Section>();
+
+        [SetUp]
+        public void SetUp()
+        {
+            directory = new RAMDirectory();
+            provider = new LuceneDataProvider(directory, LuceneVersion.LUCENE_48);
+            trace = new List<string>();
+            provider.Settings.JoinPushdownTrace = trace.Add;
+
+            Add(new Writer { Username = "alice", Country = "DE", Nick = "Ally", NickWithDocValues = "Ally", Bio = "alice writes", Number = 1 },
+                new Writer { Username = "bob", Country = "US", Nick = "bobby", NickWithDocValues = "bobby", Bio = "bob writes", Number = 2 },
+                new Writer { Username = "carol", Country = "DE", Nick = "caz", NickWithDocValues = "caz", Bio = "carol writes", Number = 3 });
+
+            Add(new Story { StoryId = "s1", WriterId = "alice", InSection = "tech", WriterNick = "ally", Summary = "alice writes", WriterNumber = 1, Rank = 5 },
+                new Story { StoryId = "s2", WriterId = "bob", InSection = "life", WriterNick = "BOBBY", Summary = "bob writes", WriterNumber = 2, Rank = 4 },
+                new Story { StoryId = "s3", WriterId = "alice", InSection = "life", WriterNick = "ALLY", Summary = "alice writes", WriterNumber = 1, Rank = 3 },
+                new Story { StoryId = "s4", WriterId = "nobody", InSection = "tech", WriterNick = "nobody", Summary = "nobody writes", WriterNumber = 9, Rank = 2 },
+                new Story { StoryId = "s5", WriterId = "bob", InSection = "none", WriterNick = "bobby", Summary = "bob writes", WriterNumber = 2, Rank = 1 });
+
+            Add(new Section { SectionId = "tech", Label = "Technology" },
+                new Section { SectionId = "life", Label = "Lifestyle" });
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            provider.Dispose();
+            directory.Dispose();
+        }
+
+        private void Add<T>(params T[] items) where T : new()
+        {
+            using (var session = provider.OpenSession<T>())
+            {
+                session.Add(items);
+                session.Commit();
+            }
+        }
+
+        /// <summary>
+        /// Runs <paramref name="query"/> with pushdown on, checks the trace, runs
+        /// it again with pushdown off, and returns the first result after
+        /// checking that both are the same.
+        /// </summary>
+        private TResult BothPaths<TResult>(Func<TResult> query, string expectedTrace, bool ordered = false)
+        {
+            provider.Settings.EnableJoinPushdown = true;
+            trace.Clear();
+            var pushed = query();
+            var messages = trace.ToList();
+
+            Assert.That(messages, Has.Some.Contains(expectedTrace), "pushdown trace");
+
+            provider.Settings.EnableJoinPushdown = false;
+            trace.Clear();
+            var inMemory = query();
+
+            Assert.That(trace, Has.All.Contains("disabled"));
+            provider.Settings.EnableJoinPushdown = true;
+
+            if (pushed is System.Collections.IEnumerable && !(pushed is string))
+            {
+                Assert.That(pushed, ordered ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(inMemory) : Is.EquivalentTo((System.Collections.IEnumerable)inMemory),
+                    "pushed-down rows vs in-memory rows");
+            }
+            else
+            {
+                Assert.That(pushed, Is.EqualTo(inMemory), "pushed-down result vs in-memory result");
+            }
+
+            return pushed;
+        }
+
+        private const string Pushed = "pushed down";
+
+        // ---- one-sided results --------------------------------------------------
+
+        [Test]
+        public void OuterSideSelected_ManyToOne()
+        {
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void OuterSideSelected_WholeDocuments()
+        {
+            var stories = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).ToList()
+                .Select(s => s.StoryId + ":" + s.Rank).ToList(), Pushed);
+
+            Assert.That(stories, Is.EquivalentTo(new[] { "s1:5", "s2:4", "s3:3", "s5:1" }));
+        }
+
+        [Test]
+        public void InnerSideSelected_OneToMany()
+        {
+            var ids = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void InnerSideFilter_NarrowsTheOuterSide()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers.Where(w => w.Country == "DE") on s.WriterId equals w.Username
+                                       select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s3" }));
+        }
+
+        [Test]
+        public void OuterSideFilter_WhenInnerSideSelected()
+        {
+            var ids = BothPaths(() => (from w in Writers.Where(w => w.Country == "US")
+                                       join s in Stories on w.Username equals s.WriterId
+                                       select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s2", "s5" }));
+        }
+
+        [Test]
+        public void WhereAfterTheJoin_OnTheSelectedOuterSide()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers on s.WriterId equals w.Username
+                                       where s.InSection == "life"
+                                       select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s2", "s3" }));
+        }
+
+        [Test]
+        public void Count_OverAJoin()
+        {
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s).Count(), Pushed), Is.EqualTo(4));
+            Assert.That(BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId select s).Count(), Pushed), Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Count_IgnoresWhatTheSelectMentions()
+        {
+            var count = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select new { s.StoryId, w.Country }).Count(), Pushed);
+
+            Assert.That(count, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Any_OverAJoin()
+        {
+            Assert.That(BothPaths(() => (from s in Stories.Where(x => x.StoryId == "s4") join w in Writers on s.WriterId equals w.Username select s).Any(), Pushed), Is.False);
+            Assert.That(BothPaths(() => (from s in Stories.Where(x => x.StoryId == "s1") join w in Writers on s.WriterId equals w.Username select s).Any(), Pushed), Is.True);
+        }
+
+        [Test]
+        public void Any_DoesNotNeedAUniqueKey()
+        {
+            // Story.WriterId is not unique, which would rule out a row-producing query.
+            Assert.That(BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId select w).Any(), Pushed), Is.True);
+        }
+
+        [Test]
+        public void SkipTakeAndOrderBy_RunOnJoinedRows()
+        {
+            // s4 has the fourth rank but no writer, so it must not use up a slot.
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers on s.WriterId equals w.Username
+                                       orderby s.Rank descending
+                                       select s.StoryId).Skip(1).Take(3).ToList(), Pushed, ordered: true);
+
+            Assert.That(ids, Is.EqualTo(new[] { "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void First_OnAJoin()
+        {
+            var id = BothPaths(() => (from s in Stories.OrderBy(x => x.Rank)
+                                      join w in Writers on s.WriterId equals w.Username
+                                      select s.StoryId).First(), Pushed);
+
+            Assert.That(id, Is.EqualTo("s5"));
+        }
+
+        [Test]
+        public void InnerSideSelected_OrderedAndPagedInLucene()
+        {
+            // The in-memory path cannot order by the inner side, so this is checked against literals.
+            trace.Clear();
+
+            var ids = (from w in Writers
+                       join s in Stories on w.Username equals s.WriterId
+                       orderby s.Rank
+                       select s.StoryId).Take(2).ToList();
+
+            Assert.That(trace, Has.Some.Contains(Pushed));
+            Assert.That(ids, Is.EqualTo(new[] { "s5", "s3" }));
+        }
+
+        [Test]
+        public void DefaultMappedKeys_JoinCaseInsensitively()
+        {
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterNick equals w.Nick select s.StoryId).ToList(),
+                "is not the only key");   // Nick is not Writer's key, so rows could repeat
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+
+            var any = BothPaths(() => (from s in Stories.Where(x => x.StoryId == "s3") join w in Writers on s.WriterNick equals w.Nick select s).Any(), Pushed);
+
+            Assert.That(any, Is.True, "ALLY joins Ally on lowercased fields");
+        }
+
+        // ---- chained joins ------------------------------------------------------
+
+        [Test]
+        public void ThreeWayJoin_BothJoinsPushedDown()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers on s.WriterId equals w.Username
+                                       join c in Sections on s.InSection equals c.SectionId
+                                       select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3" }));
+
+            trace.Clear();
+            (from s in Stories
+             join w in Writers on s.WriterId equals w.Username
+             join c in Sections on s.InSection equals c.SectionId
+             select s.StoryId).ToList();
+
+            Assert.That(trace.Count(m => m.Contains(Pushed)), Is.EqualTo(2), "both joins run inside Lucene");
+        }
+
+        [Test]
+        public void ThreeWayJoin_PushesTheUnusedSideAndJoinsTheRestInMemory()
+        {
+            var rows = BothPaths(() => (from s in Stories
+                                        join w in Writers.Where(w => w.Country == "DE") on s.WriterId equals w.Username
+                                        join c in Sections on s.InSection equals c.SectionId
+                                        select new { s.StoryId, c.Label }).ToList().Select(r => r.StoryId + ":" + r.Label).ToList(), Pushed);
+
+            Assert.That(rows, Is.EquivalentTo(new[] { "s1:Technology", "s3:Lifestyle" }));
+        }
+
+        [Test]
+        public void ThreeWayJoin_ReportsTheJoinItLeavesInMemory()
+        {
+            trace.Clear();
+
+            (from s in Stories
+             join w in Writers on s.WriterId equals w.Username
+             join c in Sections on s.InSection equals c.SectionId
+             select new { s.StoryId, c.Label }).ToList();
+
+            Assert.That(trace, Has.Some.Contains(Pushed));
+            Assert.That(trace, Has.Some.Contains("uses both sides"));
+        }
+
+        // ---- reload -------------------------------------------------------------
+
+        [Test]
+        public void AfterSearcherReload_JoinSeesNewDocumentsOnBothSides()
+        {
+            BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).ToList(), Pushed);
+
+            // Each commit reloads the searcher.
+            Add(new Writer { Username = "nobody", Country = "FR" });
+            Add(new Story { StoryId = "s6", WriterId = "carol", InSection = "tech", Rank = 6 });
+
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).ToList(), Pushed);
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s4", "s5", "s6" }));
+        }
+
+        [Test]
+        public void SessionQuery_AsEitherSide()
+        {
+            using (var stories = provider.OpenSession<Story>())
+            using (var writers = provider.OpenSession<Writer>())
+            {
+                var outer = BothPaths(() => (from s in stories.Query() join w in writers.Query() on s.WriterId equals w.Username select s).ToList()
+                    .Select(s => s.StoryId).ToList(), Pushed);
+
+                var inner = BothPaths(() => (from w in writers.Query() join s in stories.Query() on w.Username equals s.WriterId select s).ToList()
+                    .Select(s => s.StoryId).ToList(), Pushed);
+
+                Assert.That(outer, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+                Assert.That(inner, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+            }
+        }
+
+        // ---- fallbacks ----------------------------------------------------------
+
+        [Test]
+        public void Fallback_ResultUsesBothSides()
+        {
+            var rows = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select new { s.StoryId, w.Country })
+                .ToList().Select(r => r.StoryId + ":" + r.Country).ToList(), "uses both sides");
+
+            Assert.That(rows, Is.EquivalentTo(new[] { "s1:DE", "s2:US", "s3:DE", "s5:US" }));
+        }
+
+        [Test]
+        public void Fallback_OtherSideKeyIsNotUnique_KeepsRepeatedRows()
+        {
+            var names = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId select w.Username).ToList(),
+                "is not the only key");
+
+            Assert.That(names, Is.EquivalentTo(new[] { "alice", "alice", "bob", "bob" }));
+        }
+
+        [Test]
+        public void Fallback_CompositeKey()
+        {
+            var ids = BothPaths(() => (from s in Stories
+                                       join w in Writers on new { K = s.WriterId, N = s.WriterNumber } equals new { K = w.Username, N = w.Number }
+                                       select s.StoryId).ToList(), "composite, computed");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_ComputedKey()
+        {
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterId.ToUpper() equals w.Username.ToUpper() select s.StoryId).ToList(),
+                "composite, computed");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_NumericKey()
+        {
+            var ids = BothPaths(() => (from s in Stories join w in Writers on s.WriterNumber equals w.Number select s.StoryId).ToList(),
+                "not indexed as one string term");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_KeyAnalyzedIntoSeveralTerms()
+        {
+            BothPaths(() => (from s in Stories join w in Writers on s.Summary equals w.Bio select s.StoryId).ToList(),
+                "not indexed as one string term");
+        }
+
+        [Test]
+        public void Fallback_LowercasedKeyWithDocValues()
+        {
+            var any = BothPaths(() => (from s in Stories.Where(x => x.StoryId == "s3") join w in Writers on s.WriterNick equals w.NickWithDocValues select s).Any(),
+                "not indexed as one string term");
+
+            Assert.That(any, Is.True);
+        }
+
+        [Test]
+        public void Fallback_KeysIndexedDifferently()
+        {
+            BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Nick select s.StoryId).ToList(), "indexed differently");
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceHasResultOperators()
+        {
+            BothPaths(() => (from s in Stories join w in Writers.Take(2) on s.WriterId equals w.Username select s.StoryId).ToList().Count,
+                "result operators");
+        }
+
+        [Test]
+        public void Fallback_OuterSideOrdered_WhenInnerSideSelected()
+        {
+            var ids = BothPaths(() => (from w in Writers.OrderByDescending(x => x.Username)
+                                       join s in Stories on w.Username equals s.WriterId
+                                       select s.StoryId).ToList(), "outer side is ordered", ordered: true);
+
+            Assert.That(ids.Take(2), Is.EquivalentTo(new[] { "s2", "s5" }), "bob's stories come first");
+        }
+
+        [Test]
+        public void Fallback_DifferentSearchers()
+        {
+            using (var otherDirectory = new RAMDirectory())
+            using (var other = new LuceneDataProvider(otherDirectory, LuceneVersion.LUCENE_48))
+            {
+                using (var session = other.OpenSession<Writer>())
+                {
+                    session.Add(new Writer { Username = "alice", Country = "DE" });
+                    session.Commit();
+                }
+
+                var ids = BothPaths(() => (from s in Stories join w in other.AsQueryable<Writer>() on s.WriterId equals w.Username select s.StoryId).ToList(),
+                    "different searchers");
+
+                Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s3" }));
+            }
+        }
+
+        [Test]
+        public void Fallback_InnerSequenceIsNotALuceneQuery()
+        {
+            var local = new[] { new Writer { Username = "bob" } };
+
+            var ids = BothPaths(() => (from s in Stories join w in local on s.WriterId equals w.Username select s.StoryId).ToList(),
+                "not a Lucene query");
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s2", "s5" }));
+        }
+
+        [Test]
+        public void Fallback_GroupJoin_IsReportedAndBehavesAsBefore()
+        {
+            trace.Clear();
+
+            Assert.Throws<InvalidOperationException>(() =>
+                (from s in Stories join w in Writers on s.WriterId equals w.Username into ws select new { s.StoryId, Count = ws.Count() }).ToList());
+
+            Assert.That(trace, Has.Some.Contains("group joins and outer joins"));
+        }
+
+        [Test]
+        public void Disabled_AlwaysJoinsInMemory()
+        {
+            provider.Settings.EnableJoinPushdown = false;
+
+            var ids = (from s in Stories join w in Writers on s.WriterId equals w.Username select s.StoryId).ToList();
+
+            Assert.That(ids, Is.EquivalentTo(new[] { "s1", "s2", "s3", "s5" }));
+            Assert.That(trace, Has.All.Contains("disabled"));
+        }
+    }
+}

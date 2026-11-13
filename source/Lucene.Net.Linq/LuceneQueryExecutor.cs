@@ -109,7 +109,7 @@ namespace Lucene.Net.Linq
         protected override Analyzer MapperAnalyzer => mapper.Analyzer;
     }
 
-    internal abstract class LuceneQueryExecutorBase<TDocument> : IQueryExecutor, IFieldMappingInfoProvider
+    internal abstract class LuceneQueryExecutorBase<TDocument> : IQueryExecutor, IFieldMappingInfoProvider, IJoinSource
     {
         private readonly ILogger Log = Logging.CreateLogger(typeof(LuceneQueryExecutorBase<>));
 
@@ -120,9 +120,21 @@ namespace Lucene.Net.Linq
             this.context = context;
         }
 
+        Context IJoinSource.JoinContext => context;
+
+        LuceneQueryModel IJoinSource.PrepareJoinQuery(QueryModel queryModel) => PrepareQuery(queryModel);
+
         public T ExecuteScalar<T>(QueryModel queryModel)
         {
-            // Count, Any and other scalars over a join are computed from the joined rows.
+            // Joins whose result uses one side run inside Lucene; this may hand
+            // the query to the inner side's executor.
+            var delegation = new JoinPushdownPlanner(this, Log).Plan(queryModel);
+            if (delegation != null)
+            {
+                return delegation.Executor.ExecuteScalar<T>(delegation.QueryModel);
+            }
+
+            // Count, Any and other scalars over a remaining join are computed from the joined rows.
             if (queryModel.BodyClauses.OfType<JoinClause>().Any())
             {
                 return (T)((StreamedValue)ExecuteJoinedInMemory(queryModel)).Value;
@@ -142,7 +154,7 @@ namespace Lucene.Net.Linq
                 var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.IndexReader.MaxDoc - skipResults);
 
                 var resolvedQuery = ResolveVectorQueries(luceneQueryModel.Query, searcher.IndexReader, luceneQueryModel.MaxResults);
-                var executionContext = new QueryExecutionContext(searcher, resolvedQuery, luceneQueryModel.Filter);
+                var executionContext = new QueryExecutionContext(searcher, resolvedQuery, ResolveJoinFilters(luceneQueryModel, searcher));
                 TopFieldDocs hits;
 
                 TimeSpan elapsedPreparationTime;
@@ -204,6 +216,14 @@ namespace Lucene.Net.Linq
             // If the query contains joins, materialize both sides and join in memory.
             // Lucene has no relational join — we execute each side as a separate search,
             // then use LINQ-to-Objects Enumerable.Join with compiled key/result selectors.
+            var delegation = new JoinPushdownPlanner(this, Log).Plan(queryModel);
+            if (delegation != null)
+            {
+                foreach (var item in delegation.Executor.ExecuteCollection<T>(delegation.QueryModel))
+                    yield return item;
+                yield break;
+            }
+
             if (queryModel.BodyClauses.OfType<JoinClause>().Any())
             {
                 var joined = ExecuteJoinedInMemory(queryModel);
@@ -252,7 +272,7 @@ namespace Lucene.Net.Linq
                     query = new DelegatingCustomScoreQuery<TDocument>(query, ConvertDocumentForCustomBoost, scoreFunction);
                 }
 
-                var executionContext = new QueryExecutionContext(searcher, query, luceneQueryModel.Filter);
+                var executionContext = new QueryExecutionContext(searcher, query, ResolveJoinFilters(luceneQueryModel, searcher));
 
                 PrepareSearchSettings(executionContext);
 
@@ -409,11 +429,12 @@ namespace Lucene.Net.Linq
                 var outerKeySelector = Expression.Lambda<Func<object[], object>>(
                     Expression.Convert(outerKeyBody, typeof(object)), tupleParam).Compile();
 
-                // Evaluate the inner sequence and find how each key is indexed.
-                var innerSequence = Expression.Lambda<Func<object>>(
-                    Expression.Convert(joinClause.InnerSequence, typeof(object))).Compile()();
-                var innerProvider = ((innerSequence as IQueryable)?.Provider as QueryProviderBase)?.Executor as IFieldMappingInfoProvider;
-                if (innerProvider != null) keyProviders[joinClause] = innerProvider;
+                // Resolve the inner sequence and find how each key is indexed.
+                var innerSequence = JoinInnerSequence.Resolve(joinClause);
+                if (innerSequence.ReturnsDocuments && innerSequence.Executor is IFieldMappingInfoProvider innerProvider)
+                {
+                    keyProviders[joinClause] = innerProvider;
+                }
 
                 var outerKeyMapping = GetTermKeyMapping(joinClause.OuterKeySelector, keyProviders);
                 var innerKeyMapping = GetTermKeyMapping(joinClause.InnerKeySelector, keyProviders);
@@ -476,13 +497,16 @@ namespace Lucene.Net.Linq
         /// Materializes the inner side of a join, using a TermsFilter to only fetch
         /// documents whose join key matches one of the outer key values (semi-join pushdown).
         /// </summary>
-        private object[] MaterializeInnerWithSemiJoin(JoinClause joinClause, object innerObj, ITermKeyMappingInfo innerKeyMapping, List<object> outerKeys)
+        private object[] MaterializeInnerWithSemiJoin(JoinClause joinClause, JoinInnerSequence inner, ITermKeyMappingInfo innerKeyMapping, List<object> outerKeys)
         {
             if (outerKeys.Count == 0)
                 return Array.Empty<object>();
 
-            if (innerObj is IQueryable innerQueryable)
+            if (inner.Local != null)
+                return inner.Local.Cast<object>().ToArray();
+
             {
+                var innerModel = inner.QueryModel;
                 List<Term> terms = null;
                 string innerKeyFieldName;
 
@@ -510,7 +534,8 @@ namespace Lucene.Net.Linq
                 }
                 else
                 {
-                    innerKeyFieldName = ExtractFieldName(joinClause.InnerKeySelector);
+                    // A mapper that cannot name its indexed term: look the key up as written.
+                    innerKeyFieldName = inner.ReturnsDocuments ? ExtractFieldName(joinClause.InnerKeySelector) : null;
 
                     if (innerKeyFieldName != null)
                     {
@@ -518,24 +543,35 @@ namespace Lucene.Net.Linq
                     }
                 }
 
-                if (terms != null)
+                // The key filter must not run ahead of the inner sequence's own
+                // Take or Skip, so with those the whole inner sequence is loaded.
+                if (terms != null && innerModel.ResultOperators.Count == 0)
                 {
-                    var termsFilter = new Lucene.Net.Queries.TermsFilter(terms);
-                    var filterQuery = new ConstantScoreQuery(termsFilter);
+                    Query filterQuery = new ConstantScoreQuery(new Lucene.Net.Queries.TermsFilter(terms));
                     Log.LogDebug("Join semi-join pushdown: TermsFilter on {Field} with {Count} keys",
                         innerKeyFieldName, terms.Count);
 
-                    var filteredQueryable = LuceneMethods.Where((dynamic)innerQueryable, filterQuery);
-                    return ((IEnumerable<object>)Enumerable.Cast<object>((dynamic)filteredQueryable)).ToArray();
+                    // Same clause LuceneMethods.Where(query) produces.
+                    var source = innerModel.MainFromClause;
+                    innerModel.BodyClauses.Add(new WhereClause(Expression.Call(
+                        MatchesMethod.MakeGenericMethod(source.ItemType),
+                        Expression.Constant(filterQuery, typeof(Query)),
+                        new Remotion.Linq.Clauses.Expressions.QuerySourceReferenceExpression(source))));
                 }
-                return innerQueryable.Cast<object>().ToArray();
+
+                var itemType = innerModel.SelectClause.GetOutputDataInfo().ResultItemType;
+                var rows = (System.Collections.IEnumerable)ExecuteCollectionMethod.MakeGenericMethod(itemType)
+                    .Invoke(inner.Executor, new object[] { innerModel });
+
+                return rows.Cast<object>().ToArray();
             }
-
-            if (innerObj is System.Collections.IEnumerable enumerable)
-                return enumerable.Cast<object>().ToArray();
-
-            return Array.Empty<object>();
         }
+
+        private static readonly System.Reflection.MethodInfo MatchesMethod =
+            typeof(LuceneMethods).GetMethod(nameof(LuceneMethods.Matches), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+        private static readonly System.Reflection.MethodInfo ExecuteCollectionMethod =
+            typeof(IQueryExecutor).GetMethod(nameof(IQueryExecutor.ExecuteCollection));
 
         /// <summary>
         /// The mapping of a join key that is a plain mapped property of one of
@@ -645,6 +681,41 @@ namespace Lucene.Net.Linq
                 itemHolder.Current = item;
                 yield return projector(itemHolder.Current);
             }
+        }
+
+        /// <summary>
+        /// Builds the filter for the search: the query model's own filter plus
+        /// one query-time join per join that was pushed into Lucene. Creating a
+        /// join runs its "from" query against <paramref name="searcher"/>, which
+        /// is why this happens here rather than during translation, and why the
+        /// same searcher serves the join and the search.
+        /// </summary>
+        private Filter ResolveJoinFilters(LuceneQueryModel luceneQueryModel, IndexSearcher searcher)
+        {
+            var filter = luceneQueryModel.Filter;
+
+            foreach (var join in luceneQueryModel.JoinFilters)
+            {
+                // ScoreMode.None: the join only selects documents. As a filter it
+                // leaves the scores of the returned side untouched.
+                var joinQuery = Lucene.Net.Search.Join.JoinUtil.CreateJoinQuery(
+                    join.FromField, false, join.ToField, join.FromQuery, searcher, Lucene.Net.Search.Join.ScoreMode.None);
+
+                Log.LogDebug("Join filter: {Join}", join);
+
+                if (filter == null)
+                {
+                    filter = new QueryWrapperFilter(joinQuery);
+                    continue;
+                }
+
+                var both = new BooleanQuery();
+                both.Add(new ConstantScoreQuery(filter), Occur.MUST);
+                both.Add(joinQuery, Occur.MUST);
+                filter = new QueryWrapperFilter(both);
+            }
+
+            return filter;
         }
 
         /// <summary>

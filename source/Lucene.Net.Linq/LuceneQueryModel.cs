@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
+using Lucene.Net.Linq.Clauses;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Lucene.Net.Linq.Mapping;
 using Lucene.Net.Search;
@@ -176,6 +177,19 @@ namespace Lucene.Net.Linq
         public void AddFacetQuery(FacetQuery facetQuery)
         {
             facetQueries.Add(facetQuery);
+        }
+
+        private readonly List<JoinFilter> joinFilters = new List<JoinFilter>();
+
+        /// <summary>
+        /// Joins pushed into Lucene. The executor turns each into a filter once
+        /// it holds the searcher.
+        /// </summary>
+        public IReadOnlyList<JoinFilter> JoinFilters => joinFilters;
+
+        public void AddJoinFilter(JoinFilter joinFilter)
+        {
+            joinFilters.Add(joinFilter);
         }
 
         public void AddQueryStatisticsCallback(Action<LuceneQueryStatistics> callback)
