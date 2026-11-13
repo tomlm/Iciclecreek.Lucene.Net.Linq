@@ -42,10 +42,11 @@ namespace Lucene.Net.Linq.Translation
     /// </para>
     /// <para>
     /// Joins that don't qualify are left in the query model for the in-memory
-    /// join, and the reason is logged at debug level. When only the shape of
-    /// the result rules a join out (it uses both sides, or a row could
-    /// repeat), a <see cref="JoinFilterClause"/> is still added in front of
-    /// it, so the outer side is loaded only where the inner side matches.
+    /// join, and the reason is logged at debug level. When the keys and the
+    /// inner sequence qualify but the join still cannot be replaced (the
+    /// result uses both sides, a row could repeat, a side is ordered…), a
+    /// <see cref="JoinFilterClause"/> is added in front of it, so the outer
+    /// side is loaded only where the inner side matches.
     /// </para>
     /// </summary>
     internal sealed class JoinPushdownPlanner
@@ -267,23 +268,14 @@ namespace Lucene.Net.Linq.Translation
             delegation = null;
 
             // Once the join is a filter, the whole query runs in Lucene, so
-            // every result operator must be one the Lucene path implements.
-            var inMemoryOnly = queryModel.ResultOperators.FirstOrDefault(o => !RunsInLucene(o));
+            // every result operator must be one the Lucene path runs with
+            // LINQ's meaning. The executor takes the others off the query
+            // before it plans the join; this holds the planner to the same rule.
+            var inMemoryTail = InMemoryRows.FindInMemoryTail(queryModel.ResultOperators);
 
-            if (inMemoryOnly != null)
+            if (inMemoryTail >= 0)
             {
-                reason = "result operator " + inMemoryOnly.GetType().Name.Replace("ResultOperator", "") + " only runs on rows in memory";
-                return false;
-            }
-
-            // Lucene answers Min and Max by sorting on the selected value and
-            // keeping the first hit, which replaces any Skip or Take ahead of
-            // them: the extreme of all rows, not of the page.
-            var lastOperator = queryModel.ResultOperators.LastOrDefault();
-
-            if (queryModel.ResultOperators.Count > 1 && (lastOperator is MinResultOperator || lastOperator is MaxResultOperator))
-            {
-                reason = "result operator " + lastOperator.GetType().Name.Replace("ResultOperator", "") + " after Skip or Take only runs on rows in memory";
+                reason = "result operator " + queryModel.ResultOperators[inMemoryTail].GetType().Name.Replace("ResultOperator", "") + " only runs on rows in memory";
                 return false;
             }
 
@@ -557,17 +549,6 @@ namespace Lucene.Net.Linq.Translation
         private static bool OrdersByScore(Expression expression)
         {
             return expression is MethodCallExpression call && call.Method.DeclaringType == typeof(LuceneMethods) && call.Method.Name == nameof(LuceneMethods.Score);
-        }
-
-        /// <summary>
-        /// The result operators the Lucene query path implements.
-        /// </summary>
-        private static bool RunsInLucene(ResultOperatorBase op)
-        {
-            return op is TakeResultOperator || op is SkipResultOperator
-                || op is FirstResultOperator || op is LastResultOperator || op is SingleResultOperator
-                || op is MinResultOperator || op is MaxResultOperator
-                || op is CountResultOperator || op is LongCountResultOperator || op is AnyResultOperator;
         }
 
         private static SourceReferences Inspect(QueryModel model)

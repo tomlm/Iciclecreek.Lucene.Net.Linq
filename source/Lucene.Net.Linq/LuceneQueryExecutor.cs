@@ -355,14 +355,17 @@ namespace Lucene.Net.Linq
         /// <c>null</c> when the whole query can go to Lucene as it is.
         /// <list type="bullet">
         ///   <item>Result operators the Lucene path does not implement (Sum,
-        ///     Average, Distinct, Contains, All…), and Min/Max after paging:
-        ///     the query up to that operator runs normally and the rest is
-        ///     applied to its rows.</item>
-        ///   <item>A source that is itself a paged query or a join
-        ///     (<c>query.Take(10).Where(…)</c>, <c>(a join b).Take(10).Where(…)</c>):
-        ///     the source runs first and the clauses written after it are
-        ///     applied to its rows. Folding them into one Lucene query would
-        ///     filter or sort before paging, or lose the join.</item>
+        ///     Average, Distinct, Contains, All, DefaultIfEmpty…), and Min/Max
+        ///     after paging: the query up to that operator runs normally and
+        ///     the rest is applied to its rows.</item>
+        ///   <item>A source that is itself a query which cannot be folded into
+        ///     this one (<c>query.Take(10).Where(…)</c>,
+        ///     <c>query.Select(…).Distinct().OrderBy(…)</c>,
+        ///     <c>(a join b).Take(10).Where(…)</c>): the source runs first, by
+        ///     these same rules, and the clauses, select and result operators
+        ///     written after it are applied to its rows. Folded into one
+        ///     Lucene query they would filter or sort before the paging, or
+        ///     lose the Distinct or the join.</item>
         /// </list>
         /// </summary>
         private IStreamedData TryExecuteInMemory(QueryModel queryModel)
@@ -379,6 +382,27 @@ namespace Lucene.Net.Linq
                 queryModel.ResultTypeOverride = null;
 
                 var info = (StreamedSequenceInfo)queryModel.GetOutputDataInfo();
+
+                if (tail.Any(o => o is Remotion.Linq.Clauses.ResultOperators.AllResultOperator
+                    || o is Remotion.Linq.Clauses.ResultOperators.AggregateResultOperator
+                    || o is Remotion.Linq.Clauses.ResultOperators.AggregateFromSeedResultOperator))
+                {
+                    // The lambdas of All and Aggregate read the query sources, which a
+                    // selected item no longer holds (Select(s => s.Rank).All(r => r > 0)).
+                    // So the query returns the sources that the select and the tail read,
+                    // and the select is applied to those rows along with the tail.
+                    var selector = queryModel.SelectClause.Selector;
+                    var rowSources = new IQuerySource[] { queryModel.MainFromClause }
+                        .Concat(queryModel.BodyClauses.OfType<JoinClause>())
+                        .Where(s => InMemoryRows.References(selector, new[] { s }) || tail.Any(o => InMemoryRows.References(o, new[] { s })))
+                        .ToList();
+
+                    queryModel.SelectClause.Selector = Expression.NewArrayInit(typeof(object),
+                        rowSources.Select(s => Expression.Convert(new Remotion.Linq.Clauses.Expressions.QuerySourceReferenceExpression(s), typeof(object))));
+
+                    return InMemoryRows.ApplyOperators(ExecuteCollection<object[]>(queryModel), selector, rowSources, info, tail);
+                }
+
                 IStreamedData data = (IStreamedData)InvokeGeneric(RunAsSequenceMethod, info.ResultItemType, queryModel, info);
 
                 foreach (var op in tail)
@@ -403,10 +427,8 @@ namespace Lucene.Net.Linq
                     throw new NotSupportedException("Only where, orderby, select and result operators can follow a join that is used as a source: " + queryModel);
                 }
             }
-            else if (!onlyFiltersAndOrderings || clauses.Count == 0 || !IsPaged(subQuery.QueryModel))
+            else if (!onlyFiltersAndOrderings || FoldsIntoOneSearch(queryModel))
             {
-                // A select or result operators after paging commute with it, and an
-                // unpaged source can be folded into this query without changing it.
                 return null;
             }
 
@@ -416,16 +438,41 @@ namespace Lucene.Net.Linq
 
             var filtered = InMemoryRows.Apply(sourceRows.Sequence.Cast<object>().Select(o => new[] { o }), clauses, sources);
 
-            var rowInfo = queryModel.SelectClause.GetOutputDataInfo();
-            IStreamedData result = (IStreamedData)InvokeGeneric(ProjectRowsMethod, rowInfo.ResultItemType,
-                filtered, queryModel.SelectClause.Selector, sources, rowInfo);
+            return InMemoryRows.ApplyOperators(filtered, queryModel.SelectClause.Selector, sources, queryModel.SelectClause.GetOutputDataInfo(), operators);
+        }
 
-            foreach (var op in operators)
-            {
-                result = op.ExecuteInMemory(result);
-            }
+        /// <summary>
+        /// Whether a query whose source is a sub-query gives the same result
+        /// when the sub-query's clauses and result operators are merged into
+        /// it and the whole runs as one Lucene search, which is what
+        /// <see cref="PrepareQuery"/> does. Checked through every level of
+        /// nesting, because the merge moves the innermost operators outwards.
+        /// </summary>
+        private static bool FoldsIntoOneSearch(QueryModel model)
+        {
+            if (!(model.MainFromClause.FromExpression is Remotion.Linq.Clauses.Expressions.SubQueryExpression subQuery)) return true;
 
-            return result;
+            var source = subQuery.QueryModel;
+
+            if (ContainsJoin(source) || !FoldsIntoOneSearch(source)) return false;
+
+            // A where or orderby would run ahead of the source's Skip or Take.
+            if (IsPaged(source) && model.BodyClauses.Any(c => c is WhereClause || c is OrderByClause)) return false;
+
+            // The source's operators end up in front of this query's: neither may
+            // need loaded rows (Distinct, DefaultIfEmpty…), and a Min or Max here
+            // must not follow paging there (Take(2).Min(s => s.Rank)).
+            return InMemoryRows.FindInMemoryTail(OperatorsInnermostFirst(model)) < 0;
+        }
+
+        private static List<ResultOperatorBase> OperatorsInnermostFirst(QueryModel model)
+        {
+            var operators = model.MainFromClause.FromExpression is Remotion.Linq.Clauses.Expressions.SubQueryExpression nested
+                ? OperatorsInnermostFirst(nested.QueryModel)
+                : new List<ResultOperatorBase>();
+
+            operators.AddRange(model.ResultOperators);
+            return operators;
         }
 
         private static bool ContainsJoin(QueryModel model)
@@ -444,18 +491,9 @@ namespace Lucene.Net.Linq
             typeof(LuceneQueryExecutorBase<TDocument>).GetMethod(nameof(RunAsSequence),
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
-        private static readonly System.Reflection.MethodInfo ProjectRowsMethod =
-            typeof(LuceneQueryExecutorBase<TDocument>).GetMethod(nameof(ProjectRows),
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-
         private StreamedSequence RunAsSequence<T>(QueryModel queryModel, StreamedSequenceInfo info)
         {
             return new StreamedSequence(ExecuteCollection<T>(queryModel).AsQueryable(), info);
-        }
-
-        private StreamedSequence ProjectRows<T>(IEnumerable<object[]> rows, Expression selector, IList<IQuerySource> sources, StreamedSequenceInfo info)
-        {
-            return new StreamedSequence(rows.Select(InMemoryRows.Compile<T>(selector, sources)).AsQueryable(), info);
         }
 
         /// <summary>

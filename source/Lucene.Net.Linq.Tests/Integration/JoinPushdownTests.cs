@@ -936,6 +936,63 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void AllAndAggregate_AfterASelectOverAJoin()
+        {
+            // Joined ranks: 5, 4, 3, 1.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).All(r => r > 0), Pushed), Is.True);
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).All(r => r > 1), Pushed), Is.False);
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.Rank).Aggregate((a, b) => a + b), Pushed), Is.EqualTo(13));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s.StoryId).Aggregate("", (a, b) => a + b), Pushed),
+                Is.EqualTo("s5s3s2s1"));
+
+            // Both sides in the select, and in the lambda: writer numbers are 1, 2, 1, 2 for ranks 5, 4, 3, 1.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select new { s.Rank, w.Number }).All(x => x.Rank >= x.Number),
+                "uses both sides"), Is.False);
+
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select new { s.Rank, w.Number }).Aggregate(100, (a, x) => a + x.Rank * x.Number),
+                "uses both sides"), Is.EqualTo(100 + 5 + 8 + 3 + 2));
+        }
+
+        [Test]
+        public void ContainsOverALocalCollection_OnRowsInMemory()
+        {
+            var wanted = new[] { "s4", "s5", "s1" };
+
+            // Joined rows by Rank: s5, s3, s2, s1; the first three are paged, then filtered.
+            var afterPaging = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s).Take(3)
+                .Where(s => wanted.Contains(s.StoryId)).Select(s => s.StoryId).ToList(), Pushed, ordered: true);
+
+            Assert.That(afterPaging, Is.EqualTo(new[] { "s5" }));
+
+            // On the joined source of a join that runs in memory.
+            var joined = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                          where wanted.Contains(s.StoryId) select w.Username + s.StoryId).ToList(), "skipped");
+
+            Assert.That(joined, Is.EquivalentTo(new[] { "alices1", "bobs5" }));
+
+            // Across both sources, which only the joined rows can answer.
+            var either = BothPaths(() => (from w in Writers join s in Stories on w.Username equals s.WriterId
+                                          where wanted.Contains(s.StoryId) || wanted.Contains(w.Username) select s.StoryId).ToList(), "skipped");
+
+            Assert.That(either, Is.EquivalentTo(new[] { "s1", "s5" }));
+        }
+
+        [Test]
+        public void DistinctOrPagingInsideASource_WithAJoin()
+        {
+            // Joined sections: tech, life, life, none.
+            var sections = BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username select s.InSection).Distinct().OrderBy(x => x).ToList(),
+                Pushed, ordered: true);
+
+            Assert.That(sections, Is.EqualTo(new[] { "life", "none", "tech" }));
+
+            // Joined ranks ascending: 1, 3, 4, 5. The selector overloads put Take in a sub-query.
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s).Take(2).Max(s => s.Rank), Pushed), Is.EqualTo(3));
+            Assert.That(BothPaths(() => (from s in Stories join w in Writers on s.WriterId equals w.Username orderby s.Rank select s).Skip(1).Min(s => s.Rank), Pushed), Is.EqualTo(3));
+        }
+
+        [Test]
         public void Disabled_AlwaysJoinsInMemory()
         {
             provider.Settings.EnableJoinPushdown = false;

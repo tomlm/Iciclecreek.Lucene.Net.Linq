@@ -161,6 +161,74 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
+        public void ClauseAfterDistinct_KeepsTheDistinct()
+        {
+            Add(new SampleDocument { Id = "d", Scalar = 3 });
+            Add(new SampleDocument { Id = "e", Scalar = 5 });
+
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            // Each of these puts Distinct in a sub-query of the clause that follows it.
+            Assert.That(docs.Select(d => d.Scalar).Distinct().OrderBy(x => x).ToList(), Is.EqualTo(local.Select(d => d.Scalar).Distinct().OrderBy(x => x).ToList()));
+            Assert.That(docs.Select(d => d.Scalar).Distinct().OrderBy(x => x).ToList(), Is.EqualTo(new[] { 1, 3, 5 }));
+            Assert.That(docs.Select(d => d.Scalar).Distinct().Where(x => x != 5).ToList(), Is.EquivalentTo(new[] { 1, 3 }));
+            Assert.That(docs.Select(d => d.Scalar).Distinct().Select(x => x + 1).ToList(), Is.EquivalentTo(new[] { 2, 4, 6 }));
+            Assert.That(docs.Select(d => d.Scalar).Distinct().Count(x => x != 5), Is.EqualTo(2));
+            Assert.That(docs.Select(d => d.Scalar).Distinct().OrderByDescending(x => x).Skip(1).Select(x => x * 10).ToList(), Is.EqualTo(new[] { 30, 10 }));
+        }
+
+        [Test]
+        public void MinAndMaxWithASelectorAfterPaging_AnswerForThePage()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            // Min(selector) is Select(selector).Min(), which puts the paging in a sub-query. Scalars: 5, 1, 3.
+            Assert.That(docs.OrderByDescending(d => d.Scalar).Take(2).Min(d => d.Scalar), Is.EqualTo(local.OrderByDescending(d => d.Scalar).Take(2).Min(d => d.Scalar)));
+            Assert.That(docs.OrderByDescending(d => d.Scalar).Take(2).Min(d => d.Scalar), Is.EqualTo(3));
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Select(d => d.Scalar).Max(), Is.EqualTo(3));
+            Assert.That(docs.OrderBy(d => d.Scalar).Skip(1).Max(d => d.Scalar), Is.EqualTo(5));
+            Assert.That(docs.OrderByDescending(d => d.Scalar).Skip(2).Select(d => d.Scalar).Min(), Is.EqualTo(1));
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Select(d => d.Scalar).Skip(1).Min(), Is.EqualTo(3));
+
+            // Without paging they still run in Lucene.
+            Assert.That(docs.Min(d => d.Scalar), Is.EqualTo(1));
+            Assert.That(docs.Where(d => d.Scalar < 5).Max(d => d.Scalar), Is.EqualTo(3));
+        }
+
+        [Test]
+        public void SelectOrPagingAfterAClauseOnAPage()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            // By Scalar: b(1), c(3), a(5).
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(3).Where(d => d.Scalar > 1).Take(1).Select(d => d.Id).ToList(),
+                Is.EqualTo(local.OrderBy(d => d.Scalar).Take(3).Where(d => d.Scalar > 1).Take(1).Select(d => d.Id).ToList()));
+
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(3).Where(d => d.Scalar > 1).Take(1).Select(d => d.Id).ToList(), Is.EqualTo(new[] { "c" }));
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).OrderByDescending(d => d.Scalar).Skip(1).Select(d => d.Id).ToList(), Is.EqualTo(new[] { "b" }));
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).OrderByDescending(d => d.Id).Take(1).Select(d => d.Id).First(), Is.EqualTo("c"));
+        }
+
+        [Test]
+        public void ContainsOverALocalCollection_AfterPaging()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+            var ids = new[] { "a", "c", "z" };
+
+            // By Scalar: b, c, a; the first two are b and c.
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Where(d => ids.Contains(d.Id)).Select(d => d.Id).ToList(),
+                Is.EqualTo(local.OrderBy(d => d.Scalar).Take(2).Where(d => ids.Contains(d.Id)).Select(d => d.Id).ToList()));
+
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Where(d => ids.Contains(d.Id)).Select(d => d.Id).ToList(), Is.EqualTo(new[] { "c" }));
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Count(d => ids.Contains(d.Id)), Is.EqualTo(1));
+            Assert.That(docs.OrderBy(d => d.Scalar).Skip(1).Where(d => !ids.Contains(d.Id)).ToList(), Is.Empty);
+            Assert.That(docs.OrderBy(d => d.Scalar).Skip(1).Where(d => ids.Any(i => i == d.Id)).Select(d => d.Id).ToList(), Is.EqualTo(new[] { "c", "a" }));
+
+            // Ahead of the paging it runs in Lucene, as before.
+            Assert.That(docs.Where(d => ids.Contains(d.Id)).OrderBy(d => d.Scalar).Take(1).Select(d => d.Id).ToList(), Is.EqualTo(new[] { "c" }));
+        }
+
+        [Test]
         public void First_AfterPagingThatLeavesNoRows()
         {
             var docs = provider.AsQueryable<SampleDocument>();
@@ -170,6 +238,45 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(() => docs.OrderBy(d => d.Scalar).Take(2).Skip(2).First(), Throws.InvalidOperationException);
             Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Skip(1).First().Id, Is.EqualTo("c"));
             Assert.That(docs.OrderBy(d => d.Scalar).First().Id, Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void AllAndAggregate_AfterASelect()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            Assert.That(docs.Select(d => d.Scalar).All(x => x > 0), Is.True);
+            Assert.That(docs.Select(d => d.Scalar).All(x => x > 1), Is.False);
+            Assert.That(docs.Select(d => new { d.Scalar, d.Id }).All(x => x.Scalar > 0 && x.Id != "z"), Is.True);
+            Assert.That(docs.OrderBy(d => d.Scalar).Take(2).Select(d => d.Scalar).All(x => x < 5), Is.True);
+            Assert.That(docs.Select(d => d.Scalar % 2).Distinct().All(x => x == 1), Is.True);
+
+            Assert.That(docs.Select(d => d.Scalar).Aggregate((x, y) => x + y), Is.EqualTo(local.Select(d => d.Scalar).Aggregate((x, y) => x + y)));
+            Assert.That(docs.Select(d => d.Scalar).Aggregate(10, (x, y) => x + y), Is.EqualTo(19));
+            Assert.That(docs.Select(d => d.Scalar).Aggregate(10, (x, y) => x + y, x => "=" + x), Is.EqualTo("=19"));
+            Assert.That(docs.OrderBy(d => d.Scalar).Select(d => d.Id).Aggregate("", (x, y) => x + y), Is.EqualTo("bca"));
+            Assert.That(docs.OrderBy(d => d.Scalar).Select(d => d.Id).Aggregate((x, y) => x + y), Is.EqualTo("bca"));
+            Assert.That(docs.OrderBy(d => d.Scalar).Select(d => d.Id).Skip(1).Aggregate((x, y) => x + y), Is.EqualTo("ca"));
+            Assert.That(() => docs.Where(d => d.Scalar > 100).Select(d => d.Scalar).Aggregate((x, y) => x + y), Throws.InvalidOperationException);
+
+            // On whole documents, as before.
+            Assert.That(docs.Aggregate(0, (x, d) => x + d.Scalar), Is.EqualTo(9));
+            Assert.That(docs.OrderBy(d => d.Scalar).Skip(1).All(d => d.Scalar > 1), Is.True);
+        }
+
+        [Test]
+        public void DefaultIfEmpty_IsApplied()
+        {
+            var docs = provider.AsQueryable<SampleDocument>();
+
+            Assert.That(docs.Where(d => d.Scalar > 100).Select(d => d.Scalar).DefaultIfEmpty(7).Sum(), Is.EqualTo(7));
+            Assert.That(docs.Where(d => d.Scalar > 100).Select(d => d.Scalar).DefaultIfEmpty().ToList(), Is.EqualTo(new[] { 0 }));
+            Assert.That(docs.Where(d => d.Scalar > 100).Select(d => d.Scalar).DefaultIfEmpty(7).Count(), Is.EqualTo(1));
+            Assert.That(docs.Where(d => d.Scalar > 100).DefaultIfEmpty().First(), Is.Null);
+
+            // With rows it changes nothing.
+            Assert.That(docs.Select(d => d.Scalar).DefaultIfEmpty(7).Sum(), Is.EqualTo(9));
+            Assert.That(docs.Select(d => d.Scalar).Cast<object>().Count(), Is.EqualTo(3));
         }
 
         [Test]
