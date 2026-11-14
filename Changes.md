@@ -1,3 +1,8 @@
+# 4.8.10-beta00018: joins between differently indexed keys
+
+**Bug fix**
+- A join between a key that is indexed exactly (`NotAnalyzed`, `CaseSensitive`) and one that is not (a default or analyzed string field) now compares the values, case-sensitively. Since 4.8.8 the two were compared as their indexed terms, so equal values that analysis changes did not join: `"Bob"` in a default field is indexed as `bob` and never matched the exact key `Bob`. Joins between two exact keys (case-sensitive) and between two default-mapped keys (case-insensitive) are unchanged.
+
 # 4.8.9-beta00018: filters before vectors
 
 Every other condition of a query now narrows the documents before a vector is compared. See the README's *Filters run before vectors* section.

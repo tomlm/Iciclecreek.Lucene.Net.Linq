@@ -417,6 +417,9 @@ var results = (
 terms they are indexed as, the same way a `Where` on the field matches.
 A default-mapped string key (`[Field]`) is lowercased, so `"Alice"`
 joins `"alice"`; a `CaseSensitive` or `NotAnalyzed` key joins exactly.
+When only one of the two keys is indexed exactly, the values are
+compared and the join is case-sensitive: `"Bob"` joins `"Bob"` and
+not `"bob"`.
 
 #### Joins that run inside Lucene
 
