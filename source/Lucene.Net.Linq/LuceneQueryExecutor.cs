@@ -670,7 +670,13 @@ namespace Lucene.Net.Linq
                 // String keys are compared by the term they are indexed as, so the
                 // join follows the fields' configuration (a default-mapped field
                 // is case-insensitive) exactly as a query on those fields does.
-                if (outerKeyMapping != null && innerKeyMapping != null && joinClause.OuterKeySelector.Type == typeof(string))
+                // When only one side is indexed as written, the terms of equal
+                // values can differ ("bob" and "Bob"), so the values are compared
+                // and the exact side's case sensitivity decides.
+                var compareAsTerms = joinClause.OuterKeySelector.Type == typeof(string)
+                    && ComparesAsTerms(outerKeyMapping, innerKeyMapping);
+
+                if (compareAsTerms)
                 {
                     var rawOuterKeySelector = outerKeySelector;
                     outerKeySelector = tuple => ToTermKey(outerKeyMapping, rawOuterKeySelector(tuple));
@@ -691,7 +697,7 @@ namespace Lucene.Net.Linq
                 var innerKeySelector = Expression.Lambda<Func<object, object>>(
                     Expression.Convert(innerKeyBody, typeof(object)), innerParam).Compile();
 
-                if (outerKeyMapping != null && innerKeyMapping != null && joinClause.OuterKeySelector.Type == typeof(string))
+                if (compareAsTerms)
                 {
                     var rawInnerKeySelector = innerKeySelector;
                     innerKeySelector = inner => ToTermKey(innerKeyMapping, rawInnerKeySelector(inner));
@@ -861,6 +867,18 @@ namespace Lucene.Net.Linq
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Whether two string join keys are compared by their indexed terms
+        /// rather than by their values: both must be mapped, and either both
+        /// or neither indexed as written.
+        /// </summary>
+        private static bool ComparesAsTerms(ITermKeyMappingInfo outerKey, ITermKeyMappingInfo innerKey)
+        {
+            if (outerKey == null || innerKey == null) return false;
+
+            return (outerKey.JoinTermForm == JoinTermForm.Exact) == (innerKey.JoinTermForm == JoinTermForm.Exact);
         }
 
         /// <summary>

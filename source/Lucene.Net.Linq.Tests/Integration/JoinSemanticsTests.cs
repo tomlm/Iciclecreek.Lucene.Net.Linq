@@ -43,6 +43,9 @@ namespace Lucene.Net.Linq.Tests.Integration
             [Field(IndexMode.NotAnalyzed)]
             public string AuthorExact { get; set; }
 
+            [Field(Analyzer = typeof(Lucene.Net.Analysis.Standard.StandardAnalyzer))]
+            public string AuthorText { get; set; }               // tokenized and lowercased
+
             [NumericField]
             public int AuthorNumber { get; set; }
 
@@ -95,6 +98,51 @@ namespace Lucene.Net.Linq.Tests.Integration
             var ids = (from e in Entries join m in Members on e.Author equals m.Name select e.Id).ToList();
 
             Assert.That(ids, Is.EquivalentTo(new[] { "e1", "e2", "e3" }));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void LowercasedKeyJoinedToExactKey_ComparesValues_CaseSensitively(bool pushdown)
+        {
+            provider.Settings.EnableJoinPushdown = pushdown;
+
+            // "Bob" is indexed as "bob" in Author and as "Bob" in Exact: the values are equal, so they join.
+            // "ALICE" and "alice" are different values, and the exact field makes the join case-sensitive.
+            var entryFirst = (from e in Entries join m in Members on e.Author equals m.Exact select e.Id).ToList();
+            var memberFirst = (from m in Members join e in Entries on m.Exact equals e.Author select e.Id).ToList();
+
+            Assert.That(entryFirst, Is.EquivalentTo(new[] { "e1", "e3" }));
+            Assert.That(memberFirst, Is.EquivalentTo(new[] { "e1", "e3" }));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AnalyzedKeyJoinedToExactKey_ComparesValues_CaseSensitively(bool pushdown)
+        {
+            provider.Settings.EnableJoinPushdown = pushdown;
+
+            using (var session = provider.OpenSession<Member>())
+            {
+                session.Add(new Member { Name = "m4", Exact = "01HZX7Q4KJ" });
+                session.Add(new Member { Name = "m5", Exact = "two words" });
+                session.Commit();
+            }
+
+            using (var session = provider.OpenSession<Entry>())
+            {
+                session.Add(new Entry { Id = "t1", AuthorText = "Bob" });
+                session.Add(new Entry { Id = "t2", AuthorText = "bob" });
+                session.Add(new Entry { Id = "t3", AuthorText = "01HZX7Q4KJ" });
+                session.Add(new Entry { Id = "t4", AuthorText = "two words" });
+                session.Add(new Entry { Id = "t5", AuthorText = "alice" });
+                session.Commit();
+            }
+
+            var entryFirst = (from e in Entries join m in Members on e.AuthorText equals m.Exact select e.Id).ToList();
+            var memberFirst = (from m in Members join e in Entries on m.Exact equals e.AuthorText select e.Id).ToList();
+
+            Assert.That(entryFirst, Is.EquivalentTo(new[] { "t1", "t3", "t4", "t5" }));
+            Assert.That(memberFirst, Is.EquivalentTo(new[] { "t1", "t3", "t4", "t5" }));
         }
 
         [Test]
