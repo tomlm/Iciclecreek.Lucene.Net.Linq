@@ -14,7 +14,7 @@
     <PackageVersion Include="Lucene.Net.QueryParser" Version="4.8.0-beta00018" />
     <PackageVersion Include="Remotion.Linq" Version="2.2.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
-    <PackageVersion Include="Iciclecreek.Lucene.Net.Vector" Version="2.0.4" />
+    <PackageVersion Include="Iciclecreek.Lucene.Net.Vector" Version="2.1.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.14" />

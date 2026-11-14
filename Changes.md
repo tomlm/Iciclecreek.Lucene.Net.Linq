@@ -15,6 +15,9 @@ Every other condition of a query now narrows the documents before a vector is co
 **New**
 - `LuceneDataProviderSettings.VectorExactSearchLimit` (default 10,000): when `Similar` is the only condition and the search filter leaves no more than this many documents, each is compared with the query vector and no vector (HNSW) index is built.
 
+**Dependencies**
+- `Iciclecreek.Lucene.Net.Vector` 2.1.0. On .NET 10 the vector (HNSW) index is now kept per index segment and built in the background, so the first `Similar` query after a write no longer waits for the whole index to be rebuilt.
+
 # 4.8.8-beta00018: joins inside Lucene
 
 LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinUtil.CreateJoinQuery`) where the query's shape allows it. See the README's *Joins* section.
