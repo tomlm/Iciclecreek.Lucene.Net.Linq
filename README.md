@@ -968,13 +968,18 @@ condition narrows the documents first:
   `Skip`), or 10. The document type and any join that runs inside
   Lucene are applied before the K are chosen, so the K are always
   documents the query can return.
-  - When that leaves no more than
-    `Settings.VectorExactSearchLimit` documents (default 10,000), each
-    is compared with the query vector. The result is exact and no
-    vector index is built.
-  - Above the limit the approximate (HNSW) index is searched, on
-    runtimes that have it (.NET 10). Other runtimes always compare
-    one by one.
+  - On .NET 10 the search goes to the vector library
+    (`Iciclecreek.Lucene.Net.Vector`). It keeps the vectors in memory
+    per index segment, compares small segments one by one, and builds
+    an approximate (HNSW) graph for larger ones in the background, so
+    a query after a write does not wait for a rebuild.
+  - When the document type or a join leaves only a small share of the
+    index, those documents are read from the index and compared one by
+    one instead. The result is exact.
+  - `Settings.VectorExactSearchLimit` (default 0) raises the point
+    below which documents are always compared one by one from the
+    index, which keeps small result sets out of the library's memory.
+  - Other runtimes always compare one by one.
 - **Several `Similar` calls** in one query score the selected documents
   by each and add the scores.
 - **`a || x.Similar(q)`** matches the documents of `a` plus the K

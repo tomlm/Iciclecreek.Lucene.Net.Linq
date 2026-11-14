@@ -13,7 +13,7 @@ Every other condition of a query now narrows the documents before a vector is co
 - A join whose returned side has a `Similar` clause is now pushed into Lucene, and narrows the documents before the nearest are chosen. Before, such a join ran in memory over the K nearest of the outer side. With pushdown disabled it still does, so for these queries the two settings can return different rows.
 
 **New**
-- `LuceneDataProviderSettings.VectorExactSearchLimit` (default 10,000): when `Similar` is the only condition and the search filter leaves no more than this many documents, each is compared with the query vector and no vector (HNSW) index is built.
+- `LuceneDataProviderSettings.VectorExactSearchLimit` (default 0): when `Similar` is the only condition and the search filter leaves no more than this many documents, each is read from the index and compared with the query vector, and the vector library's in-memory index is not used. At the default the vector library is used whenever the runtime has it (.NET 10).
 
 **Dependencies**
 - `Iciclecreek.Lucene.Net.Vector` 2.1.0. On .NET 10 the vector (HNSW) index is now kept per index segment and built in the background, so the first `Similar` query after a write no longer waits for the whole index to be rebuilt.

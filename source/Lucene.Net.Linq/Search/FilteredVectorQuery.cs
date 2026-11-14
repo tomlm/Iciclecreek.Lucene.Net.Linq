@@ -14,11 +14,13 @@ namespace Lucene.Net.Linq.Search
     /// </summary>
     /// <remarks>
     /// When the filter accepts no more than <see cref="ExactLimit"/> documents,
-    /// each of them is compared with the query vector and no vector index is
-    /// built or read. Above that, the approximate index is searched for more
-    /// neighbours than needed and the filter picks from them; if too few pass,
-    /// the accepted documents are compared one by one after all. Runtimes
-    /// without the approximate index always compare one by one.
+    /// each of them is read from the index and compared with the query vector,
+    /// and the vector library's index is not used. Above that, the library is
+    /// searched for more neighbours than needed and the filter picks from them;
+    /// if too few pass, or the filter accepts so few documents that as many
+    /// neighbours would be needed, the accepted documents are compared one by
+    /// one after all. Runtimes without the library's index always compare one
+    /// by one.
     /// </remarks>
     internal class FilteredVectorQuery : Query
     {
