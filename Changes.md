@@ -1,4 +1,24 @@
-# Unreleased: joins inside Lucene
+# 4.8.9-beta00018: filters before vectors
+
+Every other condition of a query now narrows the documents before a vector is compared. See the README's *Filters run before vectors* section.
+
+**Behaviour changes (bug fixes)**
+- `Similar` in a different `Where` than the other conditions (`query.Where(a).Where(x => x.Text.Similar(q))`, either order, or a `Where(Query)`) now ranks the documents the conditions select. Before, the K nearest documents of the whole index were chosen first and then filtered, which often left fewer rows than asked for, or none.
+- `Similar` alone now chooses its K nearest among documents of the queried type. Before, documents of other types in the same index with the same vector field took places among the K and were then dropped.
+- K now includes `Skip`: `Where(similar).Skip(5).Take(5)` returns the sixth to tenth nearest. Before, it returned nothing.
+- `x.Similar(q) && x.Topic != "a"` (only exclusions next to `Similar`) now returns the documents that are not excluded. Before, it returned nothing.
+- `a || x.Similar(q)` now matches the documents of `a` plus the K nearest. Before, it was treated as `a && x.Similar(q)`.
+- Two `Similar` calls in one query now work: the selected documents are scored by each and the scores are added. Before, the query threw `NotSupportedException`.
+- `!x.Similar(q)` throws a `NotSupportedException` that says so.
+- A join whose returned side has a `Similar` clause is now pushed into Lucene, and narrows the documents before the nearest are chosen. Before, such a join ran in memory over the K nearest of the outer side. With pushdown disabled it still does, so for these queries the two settings can return different rows.
+
+**New**
+- `LuceneDataProviderSettings.VectorExactSearchLimit` (default 0): when `Similar` is the only condition and the search filter leaves no more than this many documents, each is read from the index and compared with the query vector, and the vector library's in-memory index is not used. At the default the vector library is used whenever the runtime has it (.NET 10).
+
+**Dependencies**
+- `Iciclecreek.Lucene.Net.Vector` 2.1.0. On .NET 10 the vector (HNSW) index is now kept per index segment and built in the background, so the first `Similar` query after a write no longer waits for the whole index to be rebuilt.
+
+# 4.8.8-beta00018: joins inside Lucene
 
 LINQ joins are pushed into Lucene with `Lucene.Net.Join` 4.8.0-beta00018 (`JoinUtil.CreateJoinQuery`) where the query's shape allows it. See the README's *Joins* section.
 

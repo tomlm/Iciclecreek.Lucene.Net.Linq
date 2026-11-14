@@ -160,8 +160,9 @@ namespace Lucene.Net.Linq
                 var skipResults = luceneQueryModel.SkipResults;
                 var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.IndexReader.MaxDoc - skipResults);
 
-                var resolvedQuery = ResolveVectorQueries(luceneQueryModel.Query, searcher.IndexReader, luceneQueryModel.MaxResults);
-                var executionContext = new QueryExecutionContext(searcher, resolvedQuery, ResolveJoinFilters(luceneQueryModel, searcher));
+                var filter = ResolveJoinFilters(luceneQueryModel, searcher);
+                var resolvedQuery = ResolveVectorQueries(luceneQueryModel, filter, searcher.IndexReader);
+                var executionContext = new QueryExecutionContext(searcher, resolvedQuery, filter);
                 TopFieldDocs hits;
 
                 TimeSpan elapsedPreparationTime;
@@ -287,7 +288,8 @@ namespace Lucene.Net.Linq
                 var searcher = searcherHandle.Searcher;
                 var skipResults = luceneQueryModel.SkipResults;
                 var maxResults = Math.Min(luceneQueryModel.MaxResults, searcher.IndexReader.MaxDoc - skipResults);
-                var query = ResolveVectorQueries(luceneQueryModel.Query, searcher.IndexReader, luceneQueryModel.MaxResults);
+                var filter = ResolveJoinFilters(luceneQueryModel, searcher);
+                var query = ResolveVectorQueries(luceneQueryModel, filter, searcher.IndexReader);
 
                 var scoreFunction = luceneQueryModel.GetCustomScoreFunction<TDocument>();
                 if (scoreFunction != null)
@@ -295,7 +297,7 @@ namespace Lucene.Net.Linq
                     query = new DelegatingCustomScoreQuery<TDocument>(query, ConvertDocumentForCustomBoost, scoreFunction);
                 }
 
-                var executionContext = new QueryExecutionContext(searcher, query, ResolveJoinFilters(luceneQueryModel, searcher));
+                var executionContext = new QueryExecutionContext(searcher, query, filter);
 
                 PrepareSearchSettings(executionContext);
 
@@ -1147,63 +1149,15 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
-        /// Walks a query tree and resolves vector queries.
-        /// <list type="bullet">
-        ///   <item><b>Pure vector query</b>: resolved via HNSW KNN with K = maxResults (from Take).</item>
-        ///   <item><b>Hybrid query</b> (vector + filter predicates): the filter predicates
-        ///     execute first and matching documents are ranked by cosine similarity
-        ///     against the query vector — no HNSW needed.</item>
-        /// </list>
+        /// Replaces the vector (Similar) clauses of the query with queries Lucene
+        /// can run. The filter is passed along so that it narrows the documents
+        /// before nearest neighbours are chosen. See <see cref="VectorQueryResolver"/>.
         /// </summary>
-        internal Query ResolveVectorQueries(Query query, IndexReader reader, int maxResults)
+        internal Query ResolveVectorQueries(LuceneQueryModel luceneQueryModel, Filter filter, IndexReader reader)
         {
-            if (query is DeferredVectorQuery deferred)
-            {
-                // Pure vector query — use HNSW on NET10, brute-force cosine on downlevel
-                var vectorFieldInfo = LookupVectorFieldInfo(deferred.Field);
-                return deferred.Resolve(reader, maxResults, vectorFieldInfo);
-            }
-
-            if (query is BooleanQuery booleanQuery)
-            {
-                var clauses = booleanQuery.GetClauses();
-
-                // Check for hybrid: vector + non-vector clauses
-                DeferredVectorQuery vectorClause = null;
-                BooleanQuery filterClauses = null;
-
-                foreach (var clause in clauses)
-                {
-                    if (clause.Query is DeferredVectorQuery dkv)
-                    {
-                        vectorClause = dkv;
-                    }
-                    else
-                    {
-                        if (filterClauses == null) filterClauses = new BooleanQuery();
-                        filterClauses.Add(clause);
-                    }
-                }
-
-                if (vectorClause != null && filterClauses != null)
-                {
-                    // Hybrid: filter drives the match set, cosine similarity drives ranking.
-                    return new VectorScoreQuery(
-                        filterClauses, vectorClause.Field, vectorClause.QueryVector);
-                }
-
-                // No hybrid — recurse into nested BooleanQueries
-                var resolved = new BooleanQuery();
-                foreach (var clause in clauses)
-                {
-                    var resolvedQuery = ResolveVectorQueries(clause.Query, reader, maxResults);
-                    resolved.Add(resolvedQuery, clause.Occur);
-                }
-                resolved.Boost = booleanQuery.Boost;
-                return resolved;
-            }
-
-            return query;
+            return VectorQueryResolver.Resolve(luceneQueryModel.Query, filter, reader,
+                luceneQueryModel.MaxResults, luceneQueryModel.SkipResults,
+                LookupVectorFieldInfo, context.Settings.VectorExactSearchLimit);
         }
 
         private Mapping.IVectorFieldMappingInfo LookupVectorFieldInfo(string vectorFieldName)
