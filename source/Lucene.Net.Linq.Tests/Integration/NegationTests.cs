@@ -319,6 +319,22 @@ namespace Lucene.Net.Linq.Tests.Integration
             AssertSelects(i => !(!(i.Name == "apple") && !i.Flag), "1", "3", "5");
         }
 
+        // ---- a group of only exclusions next to another condition ------------------
+
+        [Test]
+        public void NotEqualOperators_InParentheses()
+        {
+            AssertSelects(i => i.Flag && (i.Name != "apple" && i.Name != "date"), "3");
+            AssertSelects(i => i.Name == "apple" || (i.Name != "banana" && i.Name != "date"), "1", "2", "4");
+        }
+
+        [Test]
+        public void QueryOfOnlyExclusions_NextToAnotherCondition()
+        {
+            AssertSelects(i => i.Flag && i.Name.Query("-apple -cherry"), i => i.Flag && i.Name != "apple" && i.Name != "cherry", "3", "5");
+            AssertSelects(i => i.Name == "apple" || i.Name.Query("-apple -cherry"), i => i.Name == "apple" || (i.Name != "apple" && i.Name != "cherry"), "1", "2", "3", "5");
+        }
+
         // ---- double negation ------------------------------------------------------
 
         [Test]
@@ -355,13 +371,6 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             AssertSelects(i => i.Name != "apple", "2", "3", "4", "5");
             AssertSelects(i => i.Flag && i.Name != "apple", "3", "5");
-        }
-
-        [Test]
-        public void NotEqualOperators_InParentheses()
-        {
-            AssertSelects(i => i.Flag && (i.Name != "apple" && i.Name != "date"), "3");
-            AssertSelects(i => i.Name == "apple" || (i.Name != "banana" && i.Name != "date"), "1", "2", "4");
         }
 
         [Test]

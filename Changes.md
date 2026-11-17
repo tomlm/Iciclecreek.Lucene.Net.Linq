@@ -5,7 +5,7 @@
 - A negated range is not the inverse range: `!(x.Count > 3)` and `x.Count <= 3` differ where the value is not ordered. As in LINQ to Objects, `!(x.Count > 3)` selects the documents where a nullable field has no value and where a `float` or `double` field is `NaN`; `x.Count <= 3` selects neither.
 - `!` in front of a group is applied to each condition in it: `!(a && b)` is `!a || !b`, `!(a || b)` is `!a && !b`. Before, a group such as `!(x.Name.StartsWith("a") && x.Flag)` selected the wrong documents.
 - A double negation of a comparison (`!!(x.Name == "a")`) is the comparison itself. Before, it threw.
-- A group of only exclusions next to another condition, like `x.Flag && (x.Name != "a" && x.Name != "b")`, now excludes them. Before, it matched nothing. The same holds for a `BooleanQuery` of two or more `MUST_NOT` clauses passed to `Where(Query)` and combined with other conditions.
+- A group of only exclusions next to another condition, like `x.Flag && (x.Name != "a" && x.Name != "b")`, now excludes them. Before, it matched nothing. The same holds for a query of only exclusions inside a condition, like `x.Flag && x.Name.Query("-apple -cherry")`. A query passed to `Where(Query)` already worked and is unchanged.
 - `!` in front of `Query(...)` excludes the documents the query selects: `!x.Name.Query("apple")` is everything except `apple`, and `!x.Name.Query("-apple")` is `apple` alone. Before, it threw.
 - A negated `string.Compare` is no longer merged with another range on the same field as if it were one of its bounds: `!(string.Compare(x.Name, "b") > 0) && string.Compare(x.Name, "c") < 0` selected the names between `b` and `c`, and now selects the names up to `b`.
 
