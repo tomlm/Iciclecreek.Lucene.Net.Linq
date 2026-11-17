@@ -13,6 +13,16 @@ namespace Lucene.Net.Linq.Transformation.Visitors
         {
             QueryType queryType;
 
+            if (IsNegatedRangeComparison(expression))
+            {
+                // ([field] > value) == false is how FlagToBinaryConditionVisitor writes !([field] > value): the same
+                // range, prohibited. Unlike the inverse range ([field] <= value), that also selects the documents
+                // where the field has no value or holds NaN, as the negation does in C#.
+                var range = (LuceneQueryPredicateExpression) VisitBinary((BinaryExpression) expression.Left);
+
+                return new LuceneQueryPredicateExpression(range.QueryField, range.QueryPattern, Occur.MUST_NOT, range.QueryType);
+            }
+
             if (!expression.NodeType.TryGetQueryType(out queryType))
             {
                 return base.VisitBinary(expression);
@@ -66,6 +76,25 @@ namespace Lucene.Net.Linq.Transformation.Visitors
             }
 
             return new LuceneQueryPredicateExpression(fieldExpression, pattern, occur, queryType);
+        }
+
+        private static bool IsNegatedRangeComparison(BinaryExpression expression)
+        {
+            if (expression.NodeType != ExpressionType.Equal || !expression.Right.IsFalseConstant())
+            {
+                return false;
+            }
+
+            switch (expression.Left.NodeType)
+            {
+                case ExpressionType.GreaterThan:
+                case ExpressionType.GreaterThanOrEqual:
+                case ExpressionType.LessThan:
+                case ExpressionType.LessThanOrEqual:
+                    return true;
+            }
+
+            return false;
         }
 
         private static bool IsSimilar(Expression expression)

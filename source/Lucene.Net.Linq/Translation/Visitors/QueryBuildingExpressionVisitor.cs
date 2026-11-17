@@ -246,6 +246,22 @@ namespace Lucene.Net.Linq.Translation.Visitors
                 }
                 target.Add(clause);
             }
+            else if (source.GetClauses().Length > 1 && source.GetClauses().All(c => c.IsProhibited))
+            {
+                // A group of only prohibited clauses, like (a != 1 && b != 2), matches nothing as a nested query.
+                if (occur == Occur.SHOULD)
+                {
+                    source = (BooleanQuery)source.Clone();
+                    source.Add(new MatchAllDocsQuery(), Occur.SHOULD);
+                    target.Add(source, occur);
+                    return;
+                }
+
+                foreach (var clause in source.GetClauses())
+                {
+                    target.Add(clause);
+                }
+            }
             else
             {
                 target.Add(source, occur);

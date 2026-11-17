@@ -121,5 +121,157 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
             Assert.That(((ConstantExpression)result.Right).Value, Is.EqualTo(true));
         }
 
+        [TestCase(ExpressionType.Equal, ExpressionType.NotEqual)]
+        [TestCase(ExpressionType.NotEqual, ExpressionType.Equal)]
+        public void InverseComparison(ExpressionType comparison, ExpressionType expected)
+        {
+            // where !(doc.Count == 3)
+            var field = new LuceneQueryFieldExpression(typeof(int), "Count");
+            var constant = Expression.Constant(3);
+            var expression = Expression.Not(Expression.MakeBinary(comparison, field, constant));
+
+            var result = visitor.Visit(expression) as BinaryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected BinaryExpression to be returned.");
+            Assert.That(result.NodeType, Is.EqualTo(expected));
+            Assert.That(result.Left, Is.SameAs(field));
+            Assert.That(result.Right, Is.SameAs(constant));
+        }
+
+        // A range comparison is not replaced by its inverse: !(doc.Count > 3) and (doc.Count <= 3)
+        // differ for a document where Count has no value or is NaN. It is compared with false instead.
+        [TestCase(ExpressionType.GreaterThan)]
+        [TestCase(ExpressionType.GreaterThanOrEqual)]
+        [TestCase(ExpressionType.LessThan)]
+        [TestCase(ExpressionType.LessThanOrEqual)]
+        public void InverseRangeComparison(ExpressionType comparison)
+        {
+            // where !(doc.Count > 3)
+            var range = Expression.MakeBinary(comparison, new LuceneQueryFieldExpression(typeof(int), "Count"), Expression.Constant(3));
+
+            var result = visitor.Visit(Expression.Not(range)) as BinaryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected BinaryExpression to be returned.");
+            Assert.That(result.NodeType, Is.EqualTo(ExpressionType.Equal));
+            Assert.That(result.Left, Is.SameAs(range));
+            Assert.That(((ConstantExpression)result.Right).Value, Is.EqualTo(false));
+        }
+
+        [TestCase(ExpressionType.AndAlso, ExpressionType.OrElse)]
+        [TestCase(ExpressionType.OrElse, ExpressionType.AndAlso)]
+        public void InverseGroupOfRangeComparisons(ExpressionType group, ExpressionType expected)
+        {
+            // where !(doc.Count > 3 && doc.Count < 9)
+            var count = new LuceneQueryFieldExpression(typeof(int), "Count");
+            var lower = Expression.MakeBinary(ExpressionType.GreaterThan, count, Expression.Constant(3));
+            var upper = Expression.MakeBinary(ExpressionType.LessThan, count, Expression.Constant(9));
+
+            var result = visitor.Visit(Expression.Not(Expression.MakeBinary(group, lower, upper))) as BinaryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected BinaryExpression to be returned.");
+            Assert.That(result.NodeType, Is.EqualTo(expected));
+
+            // (doc.Count > 3) == false
+            var notLower = (BinaryExpression)result.Left;
+            Assert.That(notLower.NodeType, Is.EqualTo(ExpressionType.Equal));
+            Assert.That(notLower.Left, Is.SameAs(lower));
+            Assert.That(((ConstantExpression)notLower.Right).Value, Is.EqualTo(false));
+
+            // (doc.Count < 9) == false
+            var notUpper = (BinaryExpression)result.Right;
+            Assert.That(notUpper.NodeType, Is.EqualTo(ExpressionType.Equal));
+            Assert.That(notUpper.Left, Is.SameAs(upper));
+            Assert.That(((ConstantExpression)notUpper.Right).Value, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void DoubleInverseComparison()
+        {
+            // where !(!(doc.Count > 3))
+            var binary = Expression.MakeBinary(ExpressionType.GreaterThan, new LuceneQueryFieldExpression(typeof(int), "Count"), Expression.Constant(3));
+
+            var result = visitor.Visit(Expression.Not(Expression.Not(binary)));
+
+            Assert.That(result, Is.SameAs(binary));
+        }
+
+        [Test]
+        public void DoubleInverseMethodCall()
+        {
+            // where !(!doc.Name.StartsWith("foo"))
+            var startsWith = Expression.Call(new LuceneQueryFieldExpression(typeof(string), "Name"), "StartsWith", null, Expression.Constant("foo"));
+
+            var result = visitor.Visit(Expression.Not(Expression.Not(startsWith)));
+
+            Assert.That(result, Is.SameAs(startsWith));
+        }
+
+        [Test]
+        public void InverseFlagComparedWithConstant()
+        {
+            // where !(doc.SomeFlag == true)
+            var flag = new LuceneQueryFieldExpression(typeof(bool), "SomeFlag");
+            var expression = Expression.Not(Expression.MakeBinary(ExpressionType.Equal, flag, Expression.Constant(true)));
+
+            var result = visitor.Visit(expression) as BinaryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected BinaryExpression to be returned.");
+            Assert.That(result.NodeType, Is.EqualTo(ExpressionType.NotEqual));
+            Assert.That(result.Left, Is.SameAs(flag));
+            Assert.That(((ConstantExpression)result.Right).Value, Is.EqualTo(true));
+        }
+
+        [TestCase(ExpressionType.AndAlso, ExpressionType.OrElse)]
+        [TestCase(ExpressionType.OrElse, ExpressionType.AndAlso)]
+        public void InverseGroup(ExpressionType group, ExpressionType expected)
+        {
+            // where !(doc.SomeFlag && doc.Name == "foo" && doc.Name.StartsWith("foo"))
+            var flag = new LuceneQueryFieldExpression(typeof(bool), "SomeFlag");
+            var name = new LuceneQueryFieldExpression(typeof(string), "Name");
+            var equal = Expression.MakeBinary(ExpressionType.Equal, name, Expression.Constant("foo"));
+            var startsWith = Expression.Call(name, "StartsWith", null, Expression.Constant("foo"));
+            var expression = Expression.Not(Expression.MakeBinary(group, Expression.MakeBinary(group, flag, equal), startsWith));
+
+            var result = visitor.Visit(expression) as BinaryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected BinaryExpression to be returned.");
+            Assert.That(result.NodeType, Is.EqualTo(expected));
+
+            var left = (BinaryExpression)result.Left;
+            Assert.That(left.NodeType, Is.EqualTo(expected));
+
+            // doc.SomeFlag == false
+            var notFlag = (BinaryExpression)left.Left;
+            Assert.That(notFlag.NodeType, Is.EqualTo(ExpressionType.Equal));
+            Assert.That(notFlag.Left, Is.SameAs(flag));
+            Assert.That(((ConstantExpression)notFlag.Right).Value, Is.EqualTo(false));
+
+            // doc.Name != "foo"
+            var notEqual = (BinaryExpression)left.Right;
+            Assert.That(notEqual.NodeType, Is.EqualTo(ExpressionType.NotEqual));
+            Assert.That(notEqual.Left, Is.SameAs(name));
+
+            // doc.Name.StartsWith("foo") == false
+            var notStartsWith = (BinaryExpression)result.Right;
+            Assert.That(notStartsWith.NodeType, Is.EqualTo(ExpressionType.Equal));
+            Assert.That(notStartsWith.Left, Is.SameAs(startsWith));
+            Assert.That(((ConstantExpression)notStartsWith.Right).Value, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void InverseGroup_DoesNotLeak()
+        {
+            // where !(doc.SomeFlag && doc.OtherFlag) && doc.ThirdFlag
+            var third = new LuceneQueryFieldExpression(typeof(bool), "ThirdFlag");
+            var group = Expression.AndAlso(new LuceneQueryFieldExpression(typeof(bool), "SomeFlag"), new LuceneQueryFieldExpression(typeof(bool), "OtherFlag"));
+
+            var result = (BinaryExpression)visitor.Visit(Expression.AndAlso(Expression.Not(group), third));
+
+            Assert.That(result.NodeType, Is.EqualTo(ExpressionType.AndAlso));
+            Assert.That(result.Left.NodeType, Is.EqualTo(ExpressionType.OrElse));
+            Assert.That(((BinaryExpression)result.Right).Left, Is.SameAs(third));
+            Assert.That(((ConstantExpression)((BinaryExpression)result.Right).Right).Value, Is.EqualTo(true));
+        }
+
     }
 }

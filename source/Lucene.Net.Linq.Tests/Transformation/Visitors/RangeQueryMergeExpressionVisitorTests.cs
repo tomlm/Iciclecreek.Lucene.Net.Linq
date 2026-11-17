@@ -150,5 +150,41 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
 
             Assert.That(result, Is.SameAs(binary));
         }
+
+        // A prohibited range, like !(percentile >= 70), is not a bound of a range.
+
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void IgnoreProhibited(bool prohibitLower, bool prohibitUpper)
+        {
+            // !(percentile >= 70) && percentile < 80 is not the range [70, 80).
+            var prohibitedLower = new LuceneQueryPredicateExpression(lower.QueryField, lower.QueryPattern, prohibitLower ? Occur.MUST_NOT : Occur.MUST, lower.QueryType);
+            var prohibitedUpper = new LuceneQueryPredicateExpression(upper.QueryField, upper.QueryPattern, prohibitUpper ? Occur.MUST_NOT : Occur.MUST, upper.QueryType);
+
+            var binary = Expression.MakeBinary(ExpressionType.AndAlso, prohibitedLower, prohibitedUpper);
+            var reversed = Expression.MakeBinary(ExpressionType.AndAlso, prohibitedUpper, prohibitedLower);
+
+            Assert.That(visitor.Visit(binary), Is.SameAs(binary));
+            Assert.That(visitor.Visit(reversed), Is.SameAs(reversed));
+        }
+
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void IgnoreProhibited_ExclusionaryRange(bool prohibitLower, bool prohibitUpper)
+        {
+            // !(percentile < 40) || percentile > 60 is not everything outside [40, 60].
+            var lowerLess = new LuceneQueryPredicateExpression(new LuceneQueryFieldExpression(typeof(int), "percentile"),
+                Expression.Constant(40), prohibitLower ? Occur.MUST_NOT : Occur.MUST, QueryType.LessThan);
+            var upperGreater = new LuceneQueryPredicateExpression(new LuceneQueryFieldExpression(typeof(int), "percentile"),
+                Expression.Constant(60), prohibitUpper ? Occur.MUST_NOT : Occur.MUST, QueryType.GreaterThan);
+
+            var binary = Expression.MakeBinary(ExpressionType.OrElse, lowerLess, upperGreater);
+            var reversed = Expression.MakeBinary(ExpressionType.OrElse, upperGreater, lowerLess);
+
+            Assert.That(visitor.Visit(binary), Is.SameAs(binary));
+            Assert.That(visitor.Visit(reversed), Is.SameAs(reversed));
+        }
     }
 }
