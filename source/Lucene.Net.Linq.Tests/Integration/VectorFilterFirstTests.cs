@@ -380,6 +380,14 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(error.Message, Does.Contain("cannot be negated"));
         }
 
+        [Test]
+        public void SimilarInANegatedGroup_Throws()
+        {
+            var error = Assert.Throws<NotSupportedException>(() => Clips.Where(c => !(c.Topic == "pets" && c.Text.Similar("cat"))).ToList());
+
+            Assert.That(error.Message, Does.Contain("cannot be negated"));
+        }
+
         // ---- joins ---------------------------------------------------------------
 
         [Test]

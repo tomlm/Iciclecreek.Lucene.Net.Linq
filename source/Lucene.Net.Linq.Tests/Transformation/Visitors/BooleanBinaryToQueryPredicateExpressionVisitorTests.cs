@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Linq.Expressions;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Lucene.Net.Linq.Search;
@@ -76,6 +77,29 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
             var result = visitor.Visit(call) as LuceneQueryPredicateExpression;
 
             AssertResult(result, Occur.MUST_NOT);
+        }
+
+        [Test]
+        public void QueryEqualFalse()
+        {
+            var query = new LuceneQueryExpression(new MatchAllDocsQuery());
+
+            var result = visitor.Visit(Expression.MakeBinary(ExpressionType.Equal, query, Expression.Constant(false))) as LuceneQueryExpression;
+
+            Assert.That(result, Is.Not.Null, "Expected LuceneQueryExpression to be returned.");
+            var clause = ((BooleanQuery)result.Query).GetClauses().Single();
+            Assert.That(clause.Query, Is.SameAs(query.Query));
+            Assert.That(clause.Occur, Is.EqualTo(Occur.MUST_NOT));
+        }
+
+        [Test]
+        public void QueryEqualTrue()
+        {
+            var query = new LuceneQueryExpression(new MatchAllDocsQuery());
+
+            var result = visitor.Visit(Expression.MakeBinary(ExpressionType.Equal, query, Expression.Constant(true)));
+
+            Assert.That(result, Is.SameAs(query));
         }
 
         private static void AssertResult(LuceneQueryPredicateExpression result, Occur expectedOccur)

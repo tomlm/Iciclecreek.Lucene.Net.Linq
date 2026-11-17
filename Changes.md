@@ -1,3 +1,14 @@
+# 4.8.11-beta00018: negated conditions
+
+**Bug fixes**
+- `!` in front of a comparison now inverts it: `!(x.Name == "a")` is `x.Name != "a"`, `!(x.Count > 3)` is `x.Count <= 3`. Before, every negated comparison threw `NotSupportedException`, including a negated `Contains` on a collection field (`!x.People.Contains("lee")`) and on a local collection (`!names.Contains(x.Name)`).
+- `!` in front of a group is applied to each condition in it: `!(a && b)` is `!a || !b`, `!(a || b)` is `!a && !b`. Before, a group such as `!(x.Name.StartsWith("a") && x.Flag)` selected the wrong documents.
+- A double negation of a comparison (`!!(x.Name == "a")`) is the comparison itself. Before, it threw.
+- A group of only exclusions next to another condition, like `x.Flag && (x.Name != "a" && x.Name != "b")`, now excludes them. Before, it matched nothing. The same holds for a `BooleanQuery` of two or more `MUST_NOT` clauses passed to `Where(Query)` and combined with other conditions.
+
+**Note**
+- A negated range on a nullable field follows Lucene, not LINQ to Objects: `!(x.Nullable > 3)` is `x.Nullable <= 3`, which does not select documents where the field has no value.
+
 # 4.8.10-beta00018: joins between differently indexed keys
 
 **Bug fix**
