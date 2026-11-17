@@ -76,6 +76,16 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.That(provider.AsQueryable<Item>().Where(predicate).ToList().Select(i => i.Id).ToArray(), Is.EquivalentTo(expectedIds), "Lucene");
         }
 
+        /// <summary>
+        /// For a predicate that calls <c>Query()</c>, which only Lucene can run:
+        /// <paramref name="sameInObjects"/> is the same condition for LINQ to Objects.
+        /// </summary>
+        private void AssertSelects(Expression<Func<Item, bool>> predicate, Func<Item, bool> sameInObjects, params string[] expectedIds)
+        {
+            Assert.That(local.Where(sameInObjects).Select(i => i.Id).ToArray(), Is.EquivalentTo(expectedIds), "LINQ to Objects");
+            Assert.That(provider.AsQueryable<Item>().Where(predicate).ToList().Select(i => i.Id).ToArray(), Is.EquivalentTo(expectedIds), "Lucene");
+        }
+
         // ---- Contains on a collection field (issue #15) ---------------------------
 
         [Test]
@@ -241,6 +251,26 @@ namespace Lucene.Net.Linq.Tests.Integration
             AssertSelects(i => !(string.Compare(i.Name, "c") <= 0 || string.Compare(i.Name, "avocado") >= 0));
             AssertSelects(i => !(string.Compare(i.Name, "b") < 0 || string.Compare(i.Name, "d") > 0), "3", "4");
             AssertSelects(i => !(string.Compare(i.Name, "b") > 0 && string.Compare(i.Name, "d") < 0), "1", "2", "5");
+        }
+
+        // ---- Query() --------------------------------------------------------------
+
+        [Test]
+        public void NotQuery()
+        {
+            AssertSelects(i => !i.Name.Query("apple"), i => i.Name != "apple", "2", "3", "4", "5");
+            AssertSelects(i => !i.Name.Query("apple cherry"), i => i.Name != "apple" && i.Name != "cherry", "2", "3", "5");
+            AssertSelects(i => i.Flag && !i.Name.Query("apple cherry"), i => i.Flag && i.Name != "apple" && i.Name != "cherry", "3", "5");
+        }
+
+        [Test]
+        public void NotQuery_OfOnlyExclusions()
+        {
+            // Query("-apple") is everything except apple, so its negation is apple.
+            AssertSelects(i => !i.Name.Query("-apple"), i => i.Name == "apple", "1");
+            AssertSelects(i => !i.Name.Query("-apple -cherry"), i => i.Name == "apple" || i.Name == "cherry", "1", "4");
+            AssertSelects(i => i.Flag && !i.Name.Query("-apple -cherry"), i => i.Flag && (i.Name == "apple" || i.Name == "cherry"), "1");
+            AssertSelects(i => i.Name == "date" || !i.Name.Query("-apple -cherry"), i => i.Name == "date" || i.Name == "apple" || i.Name == "cherry", "1", "4", "5");
         }
 
         // ---- groups ---------------------------------------------------------------

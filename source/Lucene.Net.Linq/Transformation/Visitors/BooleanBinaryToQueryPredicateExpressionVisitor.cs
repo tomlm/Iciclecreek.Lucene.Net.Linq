@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Linq.Expressions;
 using Lucene.Net.Linq.Clauses.Expressions;
 using Lucene.Net.Linq.Util;
@@ -31,11 +32,31 @@ namespace Lucene.Net.Linq.Transformation.Visitors
 
             if (query != null)
             {
-                return new LuceneQueryExpression(new BooleanQuery { { query.Query, Occur.MUST_NOT } });
+                return new LuceneQueryExpression(new BooleanQuery { { WithMatchAll(query.Query), Occur.MUST_NOT } });
             }
 
             return new LuceneQueryPredicateExpression(predicate.QueryField, predicate.QueryPattern, Occur.MUST_NOT, predicate.QueryType)
                     { Boost = predicate.Boost, AllowSpecialCharacters = predicate.AllowSpecialCharacters };
+        }
+
+        /// <summary>
+        /// A query of only prohibited clauses, like <c>-field:a</c>, means everything except them, but matches
+        /// nothing once it is nested, so prohibiting it as it is would exclude nothing. Gives it the match-all
+        /// clause it gets as a whole query (see <c>QueryBuildingExpressionVisitor.Query</c>).
+        /// </summary>
+        private static Query WithMatchAll(Query query)
+        {
+            var booleanQuery = query as BooleanQuery;
+
+            if (booleanQuery == null || !booleanQuery.GetClauses().All(c => c.Occur == Occur.MUST_NOT))
+            {
+                return query;
+            }
+
+            booleanQuery = (BooleanQuery) booleanQuery.Clone();
+            booleanQuery.Add(new MatchAllDocsQuery(), Occur.SHOULD);
+
+            return booleanQuery;
         }
     }
 }
