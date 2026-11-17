@@ -163,6 +163,25 @@ namespace Lucene.Net.Linq.Tests.Integration
             AssertSelects(i => !(i.Flag != true), "1", "3", "5");
         }
 
+        // ---- string.Compare --------------------------------------------------------
+
+        [Test]
+        public void NotStringCompare_NextToARangeOnTheSameField()
+        {
+            // The prohibited range is not a bound: Name <= "b" && Name < "c", not "b" < Name < "c".
+            AssertSelects(i => !(string.Compare(i.Name, "b") > 0) && string.Compare(i.Name, "c") < 0, "1", "2");
+            AssertSelects(i => string.Compare(i.Name, "b") > 0 && !(string.Compare(i.Name, "c") < 0), "4", "5");
+        }
+
+        [Test]
+        public void NotGroupOfStringCompares()
+        {
+            // Name > "c" && Name < "avocado": nothing.
+            AssertSelects(i => !(string.Compare(i.Name, "c") <= 0 || string.Compare(i.Name, "avocado") >= 0));
+            AssertSelects(i => !(string.Compare(i.Name, "b") < 0 || string.Compare(i.Name, "d") > 0), "3", "4");
+            AssertSelects(i => !(string.Compare(i.Name, "b") > 0 && string.Compare(i.Name, "d") < 0), "1", "2", "5");
+        }
+
         // ---- groups ---------------------------------------------------------------
 
         [Test]
@@ -252,6 +271,13 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             AssertSelects(i => i.Flag && (i.Name != "apple" && i.Name != "date"), "3");
             AssertSelects(i => i.Name == "apple" || (i.Name != "banana" && i.Name != "date"), "1", "2", "4");
+        }
+
+        [Test]
+        public void NotStringCompare()
+        {
+            AssertSelects(i => !(string.Compare(i.Name, "b") > 0), "1", "2");
+            AssertSelects(i => i.Flag && !(string.Compare(i.Name, "b") > 0), "1");
         }
     }
 }

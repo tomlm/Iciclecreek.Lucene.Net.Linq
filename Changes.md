@@ -5,6 +5,7 @@
 - `!` in front of a group is applied to each condition in it: `!(a && b)` is `!a || !b`, `!(a || b)` is `!a && !b`. Before, a group such as `!(x.Name.StartsWith("a") && x.Flag)` selected the wrong documents.
 - A double negation of a comparison (`!!(x.Name == "a")`) is the comparison itself. Before, it threw.
 - A group of only exclusions next to another condition, like `x.Flag && (x.Name != "a" && x.Name != "b")`, now excludes them. Before, it matched nothing. The same holds for a `BooleanQuery` of two or more `MUST_NOT` clauses passed to `Where(Query)` and combined with other conditions.
+- A negated `string.Compare` is no longer merged with another range on the same field as if it were one of its bounds: `!(string.Compare(x.Name, "b") > 0) && string.Compare(x.Name, "c") < 0` selected the names between `b` and `c`, and now selects the names up to `b`.
 
 **Note**
 - A negated range on a nullable field follows Lucene, not LINQ to Objects: `!(x.Nullable > 3)` is `x.Nullable <= 3`, which does not select documents where the field has no value.

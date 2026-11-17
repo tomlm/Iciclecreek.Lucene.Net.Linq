@@ -24,6 +24,12 @@ namespace Lucene.Net.Linq.Transformation.Visitors
                 return expression;
             }
 
+            // A prohibited range, like !(x > 1), is not a bound: merged as one, it would require what it excludes.
+            if (left.Occur != Occur.MUST || right.Occur != Occur.MUST)
+            {
+                return expression;
+            }
+
             var l = GetQueryPatternAsConstComparable(left);
             var r = GetQueryPatternAsConstComparable(right);
 
