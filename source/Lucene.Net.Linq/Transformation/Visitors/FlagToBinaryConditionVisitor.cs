@@ -13,6 +13,23 @@ namespace Lucene.Net.Linq.Transformation.Visitors
         {
             ExpressionType inverse;
 
+            if (negate && expression.Type == typeof(bool) && IsRangeComparison(expression.NodeType))
+            {
+                // !(a > b) is not (a <= b): when a has no value or is NaN both are false, so the negation is true.
+                // The comparison is kept and compared with false, which BinaryToQueryExpressionVisitor turns into
+                // the same range, prohibited. The operands are values, not conditions.
+                negate = false;
+
+                try
+                {
+                    return Expression.MakeBinary(ExpressionType.Equal, VisitBinary(expression), Expression.Constant(false));
+                }
+                finally
+                {
+                    negate = true;
+                }
+            }
+
             if (negate && expression.Type == typeof(bool) && TryGetInverse(expression.NodeType, out inverse))
             {
                 if (expression.NodeType == ExpressionType.AndAlso || expression.NodeType == ExpressionType.OrElse)
@@ -21,7 +38,7 @@ namespace Lucene.Net.Linq.Transformation.Visitors
                     return Expression.MakeBinary(inverse, VisitNegated(expression.Left), VisitNegated(expression.Right));
                 }
 
-                // !(a == b) is (a != b), !(a > b) is (a <= b) and so on. The operands are values, not conditions.
+                // !(a == b) is (a != b), and !(a != b) is (a == b). The operands are values, not conditions.
                 negate = false;
 
                 try
@@ -88,22 +105,16 @@ namespace Lucene.Net.Linq.Transformation.Visitors
                 case ExpressionType.NotEqual:
                     inverse = ExpressionType.Equal;
                     return true;
-                case ExpressionType.GreaterThan:
-                    inverse = ExpressionType.LessThanOrEqual;
-                    return true;
-                case ExpressionType.GreaterThanOrEqual:
-                    inverse = ExpressionType.LessThan;
-                    return true;
-                case ExpressionType.LessThan:
-                    inverse = ExpressionType.GreaterThanOrEqual;
-                    return true;
-                case ExpressionType.LessThanOrEqual:
-                    inverse = ExpressionType.GreaterThan;
-                    return true;
             }
 
             inverse = type;
             return false;
+        }
+
+        private static bool IsRangeComparison(ExpressionType type)
+        {
+            return type == ExpressionType.GreaterThan || type == ExpressionType.GreaterThanOrEqual
+                || type == ExpressionType.LessThan || type == ExpressionType.LessThanOrEqual;
         }
 
         protected override Expression VisitUnary(UnaryExpression expression)

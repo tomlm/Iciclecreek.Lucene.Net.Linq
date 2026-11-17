@@ -1,14 +1,15 @@
 # 4.8.11-beta00018: negated conditions
 
 **Bug fixes**
-- `!` in front of a comparison now inverts it: `!(x.Name == "a")` is `x.Name != "a"`, `!(x.Count > 3)` is `x.Count <= 3`. Before, every negated comparison threw `NotSupportedException`, including a negated `Contains` on a collection field (`!x.People.Contains("lee")`) and on a local collection (`!names.Contains(x.Name)`).
+- `!` in front of a comparison is now translated: `!(x.Name == "a")` is `x.Name != "a"`, and `!(x.Count > 3)` excludes the documents where `x.Count > 3`. Before, every negated comparison threw `NotSupportedException`, including a negated `Contains` on a collection field (`!x.People.Contains("lee")`) and on a local collection (`!names.Contains(x.Name)`).
+- A negated range is not the inverse range: `!(x.Count > 3)` and `x.Count <= 3` differ where the value is not ordered. As in LINQ to Objects, `!(x.Count > 3)` selects the documents where a nullable field has no value and where a `float` or `double` field is `NaN`; `x.Count <= 3` selects neither.
 - `!` in front of a group is applied to each condition in it: `!(a && b)` is `!a || !b`, `!(a || b)` is `!a && !b`. Before, a group such as `!(x.Name.StartsWith("a") && x.Flag)` selected the wrong documents.
 - A double negation of a comparison (`!!(x.Name == "a")`) is the comparison itself. Before, it threw.
 - A group of only exclusions next to another condition, like `x.Flag && (x.Name != "a" && x.Name != "b")`, now excludes them. Before, it matched nothing. The same holds for a `BooleanQuery` of two or more `MUST_NOT` clauses passed to `Where(Query)` and combined with other conditions.
 - A negated `string.Compare` is no longer merged with another range on the same field as if it were one of its bounds: `!(string.Compare(x.Name, "b") > 0) && string.Compare(x.Name, "c") < 0` selected the names between `b` and `c`, and now selects the names up to `b`.
 
 **Note**
-- A negated range on a nullable field follows Lucene, not LINQ to Objects: `!(x.Nullable > 3)` is `x.Nullable <= 3`, which does not select documents where the field has no value.
+- An open-ended range on a `float` or `double` field does not match an infinite value: `x.Real > 3` does not select a document holding `double.PositiveInfinity`, as in earlier versions, so `!(x.Real > 3)` selects it. Both differ from LINQ to Objects.
 
 # 4.8.10-beta00018: joins between differently indexed keys
 

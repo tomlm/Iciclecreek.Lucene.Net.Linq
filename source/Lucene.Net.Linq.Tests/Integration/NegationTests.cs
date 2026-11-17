@@ -41,6 +41,16 @@ namespace Lucene.Net.Linq.Tests.Integration
 
             [Field(IndexMode.NotAnalyzed)]
             public List<string> People { get; set; }
+
+            // The three below have no ordered value in item 3: null, null and NaN.
+            [NumericField]
+            public int? Maybe { get; set; }
+
+            [NumericField]
+            public DateTime? When { get; set; }
+
+            [NumericField]
+            public double Real { get; set; }
         }
 
         private List<Item> local;
@@ -50,11 +60,11 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             local = new List<Item>
             {
-                new Item { Id = "1", Name = "apple", Number = 1, Flag = true, Tags = new List<string> { "music", "art" }, People = new List<string> { "p-lee", "p-kim" } },
-                new Item { Id = "2", Name = "avocado", Number = 3, Flag = false, Tags = new List<string> { "music" }, People = new List<string> { "p-kim" } },
-                new Item { Id = "3", Name = "banana", Number = 5, Flag = true, Tags = new List<string> { "art" }, People = new List<string> { "p-lee" } },
-                new Item { Id = "4", Name = "cherry", Number = 7, Flag = false, Tags = new List<string> { "music" }, People = new List<string>() },
-                new Item { Id = "5", Name = "date", Number = 9, Flag = true, Tags = new List<string>(), People = new List<string>() },
+                new Item { Id = "1", Name = "apple", Number = 1, Flag = true, Tags = new List<string> { "music", "art" }, People = new List<string> { "p-lee", "p-kim" }, Maybe = 1, When = new DateTime(2019, 1, 1), Real = 1.5 },
+                new Item { Id = "2", Name = "avocado", Number = 3, Flag = false, Tags = new List<string> { "music" }, People = new List<string> { "p-kim" }, Maybe = 3, When = new DateTime(2021, 1, 1), Real = 3 },
+                new Item { Id = "3", Name = "banana", Number = 5, Flag = true, Tags = new List<string> { "art" }, People = new List<string> { "p-lee" }, Maybe = null, When = null, Real = double.NaN },
+                new Item { Id = "4", Name = "cherry", Number = 7, Flag = false, Tags = new List<string> { "music" }, People = new List<string>(), Maybe = 7, When = new DateTime(2023, 1, 1), Real = 7.5 },
+                new Item { Id = "5", Name = "date", Number = 9, Flag = true, Tags = new List<string>(), People = new List<string>(), Maybe = 9, When = new DateTime(2025, 1, 1), Real = 9.5 },
             };
 
             local.ForEach(AddDocument);
@@ -148,7 +158,7 @@ namespace Lucene.Net.Linq.Tests.Integration
         }
 
         [Test]
-        public void NotComparisons_MergedIntoARange()
+        public void NotComparisons_OnTheSameField()
         {
             AssertSelects(i => !(i.Number < 3) && !(i.Number > 7), "2", "3", "4");
             AssertSelects(i => !(i.Number < 3) && i.Number < 9, "2", "3", "4");
@@ -161,6 +171,57 @@ namespace Lucene.Net.Linq.Tests.Integration
         {
             AssertSelects(i => !(i.Flag == true), "2", "4");
             AssertSelects(i => !(i.Flag != true), "1", "3", "5");
+        }
+
+        // ---- ranges over a value that is not ordered: missing, or NaN -------------
+        // a > b and a <= b are both false for such a value, so !(a > b) selects it and (a <= b) does not.
+
+        [Test]
+        public void NotRange_NullableInt()
+        {
+            AssertSelects(i => !(i.Maybe > 3), "1", "2", "3");
+            AssertSelects(i => !(i.Maybe >= 3), "1", "3");
+            AssertSelects(i => !(i.Maybe < 7), "3", "4", "5");
+            AssertSelects(i => !(i.Maybe <= 7), "3", "5");
+            AssertSelects(i => !(3 < i.Maybe), "1", "2", "3");
+        }
+
+        [Test]
+        public void NotRange_NullableInt_InGroups()
+        {
+            AssertSelects(i => i.Flag && !(i.Maybe > 3), "1", "3");
+            AssertSelects(i => !(i.Maybe > 3 || i.Name == "apple"), "2", "3");
+            AssertSelects(i => !(i.Maybe > 1 && i.Maybe < 9), "1", "3", "5");
+            AssertSelects(i => !(i.Maybe < 3) && !(i.Maybe > 7), "2", "3", "4");
+            AssertSelects(i => !(i.Maybe > 3) || i.Maybe > 7, "1", "2", "3", "5");
+        }
+
+        [Test]
+        public void NotRange_NullableDateTime()
+        {
+            AssertSelects(i => !(i.When > new DateTime(2022, 1, 1)), "1", "2", "3");
+            AssertSelects(i => !(i.When >= new DateTime(2021, 1, 1)), "1", "3");
+            AssertSelects(i => !(i.When < new DateTime(2022, 1, 1)), "3", "4", "5");
+            AssertSelects(i => !(i.When <= new DateTime(2023, 1, 1)), "3", "5");
+        }
+
+        [Test]
+        public void NotRange_NaN()
+        {
+            AssertSelects(i => !(i.Real > 3), "1", "2", "3");
+            AssertSelects(i => !(i.Real >= 3), "1", "3");
+            AssertSelects(i => !(i.Real < 7.5), "3", "4", "5");
+            AssertSelects(i => !(i.Real <= 7.5), "3", "5");
+            AssertSelects(i => i.Flag && !(i.Real > 3), "1", "3");
+        }
+
+        [Test]
+        public void Range_DoesNotSelectAMissingValueOrNaN()
+        {
+            AssertSelects(i => i.Maybe <= 3, "1", "2");
+            AssertSelects(i => !!(i.Maybe <= 3), "1", "2");
+            AssertSelects(i => i.When <= new DateTime(2021, 1, 1), "1", "2");
+            AssertSelects(i => i.Real <= 3, "1", "2");
         }
 
         // ---- string.Compare --------------------------------------------------------

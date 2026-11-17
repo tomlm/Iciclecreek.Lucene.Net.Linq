@@ -127,6 +127,33 @@ namespace Lucene.Net.Linq.Tests.Transformation.Visitors
             AssertLuceneQueryExpression(result, "Average", five, QueryType.LessThanOrEqual, Occur.MUST);
         }
 
+        [TestCase(ExpressionType.GreaterThan, QueryType.GreaterThan)]
+        [TestCase(ExpressionType.GreaterThanOrEqual, QueryType.GreaterThanOrEqual)]
+        [TestCase(ExpressionType.LessThan, QueryType.LessThan)]
+        [TestCase(ExpressionType.LessThanOrEqual, QueryType.LessThanOrEqual)]
+        public void RangeComparisonEqualFalse_ProhibitsTheSameRange(ExpressionType comparison, QueryType expected)
+        {
+            // (doc.Count > 5) == false, which is how FlagToBinaryConditionVisitor writes !(doc.Count > 5)
+            var five = Expression.Constant(5);
+            var range = Expression.MakeBinary(comparison, new LuceneQueryFieldExpression(typeof(int), "Count"), five);
+            var expression = Expression.MakeBinary(ExpressionType.Equal, range, Expression.Constant(false));
+
+            var result = visitor.Visit(expression);
+            AssertLuceneQueryExpression(result, "Count", five, expected, Occur.MUST_NOT);
+        }
+
+        [Test]
+        public void RangeComparisonEqualFalse_SwitchesOperatorWhenConstantIsOnLeft()
+        {
+            // (5 > doc.Count) == false
+            var five = Expression.Constant(5);
+            var range = Expression.MakeBinary(ExpressionType.GreaterThan, five, new LuceneQueryFieldExpression(typeof(int), "Count"));
+            var expression = Expression.MakeBinary(ExpressionType.Equal, range, Expression.Constant(false));
+
+            var result = visitor.Visit(expression);
+            AssertLuceneQueryExpression(result, "Count", five, QueryType.LessThan, Occur.MUST_NOT);
+        }
+
         [Test]
         public void ThrowsOnMissingQueryField()
         {
