@@ -98,9 +98,15 @@ namespace Lucene.Net.Linq
                     readerFromWriter = true;
                     searcher = new IndexSearcher(newReader);
                 }
-                else if (reader == null || readerFromWriter)
+                else if (reader is not DirectoryReader || readerFromWriter)
                 {
-                    searcher = CreateSearcher();
+                    // After reading from a writer, the directory may hold no commit yet. Read it as
+                    // empty rather than through CreateSearcher, whose second writer would wait on the
+                    // lock the first one holds. The empty reader is not a DirectoryReader, so the next
+                    // reload comes back here and opens the directory once something is committed.
+                    searcher = reader != null && !DirectoryReader.IndexExists(directory)
+                        ? new IndexSearcher(new MultiReader())
+                        : CreateSearcher();
                     reader = searcher.IndexReader;
                     readerFromWriter = false;
                 }

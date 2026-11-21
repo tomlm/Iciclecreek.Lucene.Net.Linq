@@ -168,6 +168,31 @@ namespace Lucene.Net.Linq.Tests
             Assert.That(CountOf(ownContext), Is.EqualTo(3), "and reopens from the directory as before");
         }
 
+        [Test]
+        public void ReloadWithoutTheWriter_BeforeAnythingIsCommitted_ReadsNothing()
+        {
+            var own = new RAMDirectory();
+            var ownContext = new Context(own, new object());
+            using var writer = new IndexWriter(own, new IndexWriterConfig(LuceneVersion.LUCENE_48, new StandardAnalyzer(LuceneVersion.LUCENE_48)));
+            writer.AddDocument(new Document());
+            ownContext.Reload(writer);
+            Assert.That(CountOf(ownContext), Is.EqualTo(1));
+
+            // No commit yet, and the writer holds the lock: the directory reads as empty,
+            // rather than a second writer being opened to lay down an empty commit.
+            Assert.That(() => ownContext.Reload(), Throws.Nothing);
+            Assert.That(CountOf(ownContext), Is.EqualTo(0));
+            Assert.That(() => ownContext.Reload(), Throws.Nothing, "still nothing committed");
+
+            writer.Commit();
+            ownContext.Reload();
+            Assert.That(CountOf(ownContext), Is.EqualTo(1), "the commit is read from the directory");
+
+            writer.AddDocument(new Document());
+            ownContext.Reload(writer);
+            Assert.That(CountOf(ownContext), Is.EqualTo(2), "and the writer can be read from again");
+        }
+
         private static int CountOf(Context of)
         {
             using var handle = of.CheckoutSearcher();
