@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Lucene.Net.Linq.Mapping;
 using Microsoft.Extensions.AI;
 using NUnit.Framework;
@@ -316,6 +317,45 @@ namespace Lucene.Net.Linq.Tests.Integration
             Assert.Throws<InvalidOperationException>(() =>
                 Documents.Where(d => d.Title.Similar(nullText)).ToList());
 #endif
+        }
+
+        [Test]
+        public async Task Similar_WithAVector_RanksAsItsTextDoes()
+        {
+#if NET8_0_OR_GREATER
+            var vector = (await generator.GenerateAsync(new[] { "a cute cat napping" }))[0].Vector.ToArray();
+
+            var byVector = Documents.Where(d => d.Title.Similar(vector)).Select(d => d.Id).ToList();
+            var byText = Documents.Where(d => d.Title.Similar("a cute cat napping")).Select(d => d.Id).ToList();
+
+            Assert.That(byVector, Is.Not.Empty);
+            Assert.That(byVector[0], Is.EqualTo("2"));
+            Assert.That(byVector, Is.EqualTo(byText));
+#endif
+        }
+
+        [Test]
+        public async Task Similar_WithAVector_NeedsNoEmbeddingGenerator()
+        {
+#if NET8_0_OR_GREATER
+            var vector = (await generator.GenerateAsync(new[] { "deep learning artificial intelligence" }))[0].Vector.ToArray();
+            // Reads the same index, with no embedding generator at all.
+            var reader = new ReadOnlyLuceneDataProvider(directory, Lucene.Net.Util.LuceneVersion.LUCENE_48);
+
+            var result = reader.AsQueryable<VectorDocument>().Where(d => d.Title.Similar(vector) && d.Category == "science").ToList();
+
+            Assert.That(result.Select(d => d.Id), Is.EquivalentTo(new[] { "3", "5" }));
+            Assert.That(result[0].Id, Is.EqualTo("5"), "machine learning ranks first for deep learning");
+#endif
+        }
+
+        [Test]
+        public void Similar_EmptyVector_ThrowsInvalidOperationException()
+        {
+            var empty = Array.Empty<float>();
+            float[] none = null;
+            Assert.Throws<InvalidOperationException>(() => Documents.Where(d => d.Title.Similar(empty)).ToList());
+            Assert.Throws<InvalidOperationException>(() => Documents.Where(d => d.Title.Similar(none)).ToList());
         }
 
         [Test]

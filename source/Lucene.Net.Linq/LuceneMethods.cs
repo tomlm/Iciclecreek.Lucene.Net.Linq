@@ -255,6 +255,30 @@ namespace Lucene.Net.Linq
             throw new InvalidOperationException(UnreachableCode);
         }
 
+        /// <summary>
+        /// Performs vector similarity search on a string property that has been configured as a
+        /// vector field, with a vector already computed: "more like this one" from a stored
+        /// vector. Nothing is embedded, so no <c>EmbeddingGenerator</c> is needed. The vector must
+        /// come from the same model as the indexed vectors.
+        /// </summary>
+        /// <param name="property">The string property to search (must have a vector field configured).</param>
+        /// <param name="vector">The vector to search near.</param>
+        public static bool Similar(this string property, float[] vector)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
+        /// <summary>
+        /// Performs vector similarity search against the default content field, with a vector
+        /// already computed. Nothing is embedded.
+        /// </summary>
+        /// <param name="obj">The mapped document (used to target the content field).</param>
+        /// <param name="vector">The vector to search near.</param>
+        public static bool Similar<T>(this T obj, float[] vector)
+        {
+            throw new InvalidOperationException(UnreachableCode);
+        }
+
         internal static bool Matches<T>(Query query, T item)
         {
             throw new InvalidOperationException(UnreachableCode);

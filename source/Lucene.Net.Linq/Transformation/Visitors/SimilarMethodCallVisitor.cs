@@ -14,58 +14,68 @@ namespace Lucene.Net.Linq.Transformation.Visitors
     /// </summary>
     internal class SimilarMethodCallVisitor : MethodInfoMatchingVisitor
     {
-        private static readonly MethodInfo SimilarStringMethod =
-            Util.Reflection.MethodOf<bool>(() => LuceneMethods.Similar(null, null));
-
-        private static readonly MethodInfo SimilarObjectMethod =
+        // Every Similar overload: on a property or on the object, given a text or a vector.
+        private static readonly MethodInfo[] SimilarMethods =
             typeof(LuceneMethods).GetMethods()
-                .First(m => m.Name == "Similar" && m.IsGenericMethod);
+                .Where(m => m.Name == nameof(LuceneMethods.Similar))
+                .ToArray();
 
         private readonly IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
         private readonly string defaultSearchProperty;
 
         internal SimilarMethodCallVisitor(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string defaultSearchProperty = null)
         {
-            AddMethod(SimilarStringMethod);
-            AddMethod(SimilarObjectMethod);
+            foreach (var method in SimilarMethods)
+                AddMethod(method);
             this.embeddingGenerator = embeddingGenerator;
             this.defaultSearchProperty = defaultSearchProperty;
         }
 
         protected override Expression VisitSupportedMethodCallExpression(MethodCallExpression expression)
         {
-            if (embeddingGenerator == null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot use Similar() without configuring an IEmbeddingGenerator on LuceneDataProviderSettings.EmbeddingGenerator.");
-            }
-
             string fieldName;
-            string queryText;
-
             if (expression.Method.IsGenericMethod)
             {
-                // Object-level: LuceneMethods.Similar<T>(obj, queryText) → default search property
+                // Object-level: LuceneMethods.Similar<T>(obj, ...) → default search property
                 fieldName = defaultSearchProperty
                     ?? throw new InvalidOperationException(
-                        "Cannot use Similar<T>(obj, queryText) without a default search property. " +
+                        "Cannot use Similar<T>(obj, ...) without a default search property. " +
                         "Either call Similar on a specific string property, or ensure the mapped type has a key or indexed property.");
-                queryText = EvaluateExpression<string>(expression.Arguments[1]);
             }
             else
             {
-                // Property-level: LuceneMethods.Similar(property, queryText)
+                // Property-level: LuceneMethods.Similar(property, ...)
                 fieldName = ExtractFieldName(expression.Arguments[0]);
-                queryText = EvaluateExpression<string>(expression.Arguments[1]);
             }
 
-            if (string.IsNullOrEmpty(queryText))
+            float[] vector;
+            if (expression.Arguments[1].Type == typeof(float[]))
             {
-                throw new InvalidOperationException(
-                    "Similar() requires a non-null, non-empty query text.");
+                // A vector already computed: searched as it is, with nothing embedded.
+                vector = EvaluateExpression<float[]>(expression.Arguments[1]);
+                if (vector == null || vector.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "Similar() requires a non-null, non-empty vector.");
+                }
+            }
+            else
+            {
+                var queryText = EvaluateExpression<string>(expression.Arguments[1]);
+                if (string.IsNullOrEmpty(queryText))
+                {
+                    throw new InvalidOperationException(
+                        "Similar() requires a non-null, non-empty query text.");
+                }
+                if (embeddingGenerator == null)
+                {
+                    throw new InvalidOperationException(
+                        "Cannot use Similar() with a query text without configuring an IEmbeddingGenerator on LuceneDataProviderSettings.EmbeddingGenerator. " +
+                        "Similar() with a vector needs none.");
+                }
+                vector = GenerateEmbedding(queryText);
             }
 
-            var vector = GenerateEmbedding(queryText);
             var vectorFieldName = fieldName + "_vector";
 
             return new LuceneVectorQueryExpression(vectorFieldName, vector);
