@@ -24,6 +24,7 @@ namespace Lucene.Net.Linq
         private readonly object reloadLock = new object();
         private SearcherClientTracker tracker;
         private IndexReader reader;
+        private bool readerFromWriter;
         private bool disposed;
 
         public Context(Directory directory, object transactionLock)
@@ -70,18 +71,38 @@ namespace Lucene.Net.Linq
             return new SearcherHandle(CurrentTracker);
         }
 
-        public virtual void Reload()
+        public virtual void Reload() => Reload(null);
+
+        /// <summary>
+        /// Reloads the searcher. With a <paramref name="writer"/>, the new reader is opened from it
+        /// (near real time): it sees what the writer holds, committed or not, at no commit's cost.
+        /// Without one, it is opened from the directory and sees only what is committed; a reader
+        /// that came from a writer is then replaced outright, since that writer may be closed.
+        /// </summary>
+        public virtual void Reload(IndexWriter writer)
         {
             lock (reloadLock)
             {
                 AssertNotDisposed();
-                Log.LogInformation("Reloading index.");
+                Log.LogDebug("Reloading index.");
 
                 IndexSearcher searcher;
-                if (reader == null)
+                if (writer != null)
+                {
+                    var newReader = reader is DirectoryReader current
+                        ? DirectoryReader.OpenIfChanged(current, writer, true)
+                        : DirectoryReader.Open(writer, true);
+                    if (newReader == null)
+                        return;
+                    reader = newReader;
+                    readerFromWriter = true;
+                    searcher = new IndexSearcher(newReader);
+                }
+                else if (reader == null || readerFromWriter)
                 {
                     searcher = CreateSearcher();
                     reader = searcher.IndexReader;
+                    readerFromWriter = false;
                 }
                 else if (!ReopenSearcher(out searcher))
                 {

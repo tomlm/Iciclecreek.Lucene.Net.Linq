@@ -1,3 +1,9 @@
+# 4.8.12-beta00018: searching what a writer has not committed
+
+**New**
+- `LuceneDataProvider.Refresh(IndexWriter writer)` reopens the searcher from the writer (near real time): searches see every document the writer holds, committed or not, without the cost of a commit. Only the segments that changed are opened again.
+- `Refresh(null)`, or `Refresh()`, goes back to reading the directory, which holds what is committed. Call it before the writer is closed or given up: a reader from a closed writer cannot be reopened from it. A searcher opened from a writer stays usable after the writer is closed, so a search in progress is not affected.
+
 # 4.8.11-beta00018: negated conditions
 
 **Bug fixes**

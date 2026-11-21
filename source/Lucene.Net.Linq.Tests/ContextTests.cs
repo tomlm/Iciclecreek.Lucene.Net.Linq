@@ -120,6 +120,59 @@ namespace Lucene.Net.Linq.Tests
 
             Assert.That(next, Is.Not.Null, "Should fire loading event with non-null new searcher");
         }
+
+        [Test]
+        public void ReloadFromAWriter_SeesWhatItHasNotCommitted()
+        {
+            var own = new RAMDirectory();
+            var ownContext = new Context(own, new object());
+            using var writer = new IndexWriter(own, new IndexWriterConfig(LuceneVersion.LUCENE_48, new StandardAnalyzer(LuceneVersion.LUCENE_48)));
+            writer.Commit();
+            Assert.That(CountOf(ownContext), Is.EqualTo(0));
+
+            writer.AddDocument(new Document());
+            ownContext.Reload();
+            Assert.That(CountOf(ownContext), Is.EqualTo(0), "from the directory: nothing is committed yet");
+
+            ownContext.Reload(writer);
+            Assert.That(CountOf(ownContext), Is.EqualTo(1), "from the writer: the uncommitted document");
+
+            writer.AddDocument(new Document());
+            ownContext.Reload(writer);
+            Assert.That(CountOf(ownContext), Is.EqualTo(2), "reopened from the writer");
+        }
+
+        [Test]
+        public void ReloadWithoutTheWriter_AfterItIsClosed_ReadsTheDirectoryAgain()
+        {
+            var own = new RAMDirectory();
+            var ownContext = new Context(own, new object());
+            var writer = new IndexWriter(own, new IndexWriterConfig(LuceneVersion.LUCENE_48, new StandardAnalyzer(LuceneVersion.LUCENE_48)));
+            writer.AddDocument(new Document());
+            writer.Commit();
+            ownContext.Reload(writer);
+            writer.AddDocument(new Document());
+            writer.Commit();
+            writer.Dispose();
+
+            // A reader from a closed writer cannot be reopened from it: the directory is read instead.
+            Assert.That(() => ownContext.Reload(), Throws.Nothing);
+            Assert.That(CountOf(ownContext), Is.EqualTo(2));
+
+            using (var other = new IndexWriter(own, new IndexWriterConfig(LuceneVersion.LUCENE_48, new StandardAnalyzer(LuceneVersion.LUCENE_48))))
+            {
+                other.AddDocument(new Document());
+                other.Commit();
+            }
+            ownContext.Reload();
+            Assert.That(CountOf(ownContext), Is.EqualTo(3), "and reopens from the directory as before");
+        }
+
+        private static int CountOf(Context of)
+        {
+            using var handle = of.CheckoutSearcher();
+            return handle.Searcher.IndexReader.NumDocs;
+        }
     }
 
     public class NoOpIndexWriter : IIndexWriter
