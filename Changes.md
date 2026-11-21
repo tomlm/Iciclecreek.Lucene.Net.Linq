@@ -1,3 +1,11 @@
+# 4.8.13-beta00018: similar to a vector
+
+**New**
+- `Similar(float[] vector)` on a vector property (`x.Title.Similar(vector)`) and on the object (`x.Similar(vector)`) searches near a vector already computed, such as one stored with an object: "more like this one". Nothing is embedded, so a query that uses only vectors needs no `EmbeddingGenerator`. The vector must come from the same model as the indexed vectors. A null or empty vector throws `InvalidOperationException`.
+
+**Docs**
+- `Refresh(IndexWriter)` now says to call `Refresh()` once the writer is closed (it said before).
+
 # 4.8.12-beta00018: searching what a writer has not committed
 
 **New**

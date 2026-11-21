@@ -128,8 +128,9 @@ namespace Lucene.Net.Linq
         /// <summary>
         /// Refresh the internal IndexSearcher from <paramref name="writer"/> (near real time):
         /// searches then see everything the writer holds, committed or not, without the cost of a
-        /// commit. Pass null once the writer is to be closed, to go back to reading what is
-        /// committed in the directory.
+        /// commit. Once the writer is closed, call <see cref="Refresh()"/> (or pass null) to go back
+        /// to reading what is committed in the directory: a reader from a closed writer cannot be
+        /// reopened from it, so it is replaced. A search already running keeps its reader.
         /// </summary>
         public void Refresh(IndexWriter writer)
         {
