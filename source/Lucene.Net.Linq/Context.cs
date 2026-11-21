@@ -24,6 +24,7 @@ namespace Lucene.Net.Linq
         private readonly object reloadLock = new object();
         private SearcherClientTracker tracker;
         private IndexReader reader;
+        private bool readerFromWriter;
         private bool disposed;
 
         public Context(Directory directory, object transactionLock)
@@ -70,18 +71,44 @@ namespace Lucene.Net.Linq
             return new SearcherHandle(CurrentTracker);
         }
 
-        public virtual void Reload()
+        public virtual void Reload() => Reload(null);
+
+        /// <summary>
+        /// Reloads the searcher. With a <paramref name="writer"/>, the new reader is opened from it
+        /// (near real time): it sees what the writer holds, committed or not, at no commit's cost.
+        /// Without one, it is opened from the directory and sees only what is committed; a reader
+        /// that came from a writer is then replaced outright, since that writer may be closed.
+        /// </summary>
+        public virtual void Reload(IndexWriter writer)
         {
             lock (reloadLock)
             {
                 AssertNotDisposed();
-                Log.LogInformation("Reloading index.");
+                Log.LogDebug("Reloading index.");
 
                 IndexSearcher searcher;
-                if (reader == null)
+                if (writer != null)
                 {
-                    searcher = CreateSearcher();
+                    var newReader = reader is DirectoryReader current
+                        ? DirectoryReader.OpenIfChanged(current, writer, true)
+                        : DirectoryReader.Open(writer, true);
+                    if (newReader == null)
+                        return;
+                    reader = newReader;
+                    readerFromWriter = true;
+                    searcher = new IndexSearcher(newReader);
+                }
+                else if (reader is not DirectoryReader || readerFromWriter)
+                {
+                    // After reading from a writer, the directory may hold no commit yet. Read it as
+                    // empty rather than through CreateSearcher, whose second writer would wait on the
+                    // lock the first one holds. The empty reader is not a DirectoryReader, so the next
+                    // reload comes back here and opens the directory once something is committed.
+                    searcher = reader != null && !DirectoryReader.IndexExists(directory)
+                        ? new IndexSearcher(new MultiReader())
+                        : CreateSearcher();
                     reader = searcher.IndexReader;
+                    readerFromWriter = false;
                 }
                 else if (!ReopenSearcher(out searcher))
                 {

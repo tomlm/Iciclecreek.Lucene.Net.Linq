@@ -126,6 +126,17 @@ namespace Lucene.Net.Linq
         }
 
         /// <summary>
+        /// Refresh the internal IndexSearcher from <paramref name="writer"/> (near real time):
+        /// searches then see everything the writer holds, committed or not, without the cost of a
+        /// commit. Pass null once the writer is to be closed, to go back to reading what is
+        /// committed in the directory.
+        /// </summary>
+        public void Refresh(IndexWriter writer)
+        {
+            context.Reload(writer);
+        }
+
+        /// <summary>
         /// Settings that enable or disable optional behavior.
         /// </summary>
         public LuceneDataProviderSettings Settings
